@@ -1,0 +1,2 @@
+[console_scripts]
+vhs-process = src.cli:main

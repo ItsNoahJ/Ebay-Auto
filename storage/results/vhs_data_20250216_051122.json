@@ -1,0 +1,14 @@
+{
+  "ocr_data": {
+    "full": "Test VHS Movie (1995)",
+    "region_0": "Test VHS Movie (1995)",
+    "num_regions": 1,
+    "image_path": "test_images\\test_vhs_cover.jpg"
+  },
+  "enriched_data": {
+    "title": "Test VHS Movie (1995)",
+    "timestamp": "2025-02-16T05:11:22.882624"
+  },
+  "processing_timestamp": "2025-02-16T05:11:22.882624",
+  "source_image": "test_images\\test_vhs_cover.jpg"
+}

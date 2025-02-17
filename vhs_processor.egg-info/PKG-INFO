@@ -1,0 +1,169 @@
+Metadata-Version: 2.2
+Name: vhs_processor
+Version: 0.1.0
+Summary: VHS tape processing and identification tool
+Home-page: https://github.com/yourusername/vhs-processor
+Author: Your Name
+Author-email: your.email@example.com
+Classifier: Development Status :: 3 - Alpha
+Classifier: Environment :: Console
+Classifier: Intended Audience :: End Users/Desktop
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Topic :: Multimedia :: Graphics
+Classifier: Topic :: Scientific/Engineering :: Image Processing
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.24.0
+Requires-Dist: opencv-python>=4.8.0
+Requires-Dist: Pillow>=10.0.0
+Requires-Dist: pytesseract>=0.3.10
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: requests>=2.31.0
+Requires-Dist: requests-cache>=1.1.0
+Requires-Dist: PyQt6>=6.5.0
+Requires-Dist: pytest>=7.4.0
+Requires-Dist: pytest-cov>=4.1.0
+Requires-Dist: black>=23.7.0
+Requires-Dist: flake8>=6.1.0
+Requires-Dist: isort>=5.12.0
+Requires-Dist: mypy>=1.5.0
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# VHS Tape Processor
+
+An automated system for processing and identifying VHS tapes using computer vision and movie metadata.
+
+## Features
+
+- Capture images of VHS tapes using a mounted camera
+- Extract text from tape covers using OCR
+- Identify movies using TMDb API
+- Debug visualization of detected regions
+- CLI and GUI interfaces (GUI coming soon)
+- Result storage and caching
+
+## Requirements
+
+- Python 3.8+
+- OpenCV
+- Tesseract OCR
+- TMDb API key
+
+### Windows
+
+1. Install Python 3.8 or higher
+2. Install Tesseract OCR:
+   - Download installer from https://github.com/UB-Mannheim/tesseract/wiki
+   - Install to default location (`C:\Program Files\Tesseract-OCR`)
+3. Set up environment:
+   ```bat
+   python -m venv venv
+   venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+### Linux/macOS
+
+1. Install Python 3.8 or higher
+2. Install Tesseract OCR:
+   ```bash
+   # Ubuntu/Debian
+   sudo apt install tesseract-ocr
+   
+   # macOS
+   brew install tesseract
+   ```
+3. Set up environment:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+## Configuration
+
+1. Copy example environment file:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Configure settings in `.env`:
+   - Set `TESSERACT_CMD` to Tesseract executable path
+   - Add your TMDb API key as `TMDB_API_KEY`
+   - Adjust other settings as needed
+
+## Usage
+
+### Command Line
+
+Process a single image:
+```bash
+python -m src.cli path/to/image.jpg
+```
+
+Enable debug output:
+```bash
+python -m src.cli path/to/image.jpg --debug
+```
+
+### Development
+
+Create test image:
+```bash
+python create_test_image.py "Movie Title" "1995" -o test.jpg
+```
+
+Run tests:
+```bash
+pytest
+```
+
+Run tests with coverage:
+```bash
+pytest --cov=src
+```
+
+## Project Structure
+
+```
+â”œâ”€â”€ src/
+â”‚   â”œâ”€â”€ config/         # Configuration
+â”‚   â”œâ”€â”€ enrichment/     # Movie data enrichment
+â”‚   â”œâ”€â”€ gui/           # GUI components (coming soon)
+â”‚   â”œâ”€â”€ hardware/      # Camera interface
+â”‚   â”œâ”€â”€ models/        # Core processing
+â”‚   â”œâ”€â”€ utils/         # Utility functions
+â”‚   â””â”€â”€ vision/        # Computer vision
+â”œâ”€â”€ tests/             # Test suite
+â”œâ”€â”€ storage/           # Results and cache
+â”‚   â”œâ”€â”€ cache/         # API cache
+â”‚   â”œâ”€â”€ images/        # Captured images
+â”‚   â””â”€â”€ results/       # Processing results
+â””â”€â”€ test_images/       # Test data
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a pull request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
