@@ -19,20 +19,16 @@ Classifier: Topic :: Multimedia :: Graphics
 Classifier: Topic :: Scientific/Engineering :: Image Processing
 Requires-Python: >=3.8
 Description-Content-Type: text/markdown
-Requires-Dist: numpy>=1.24.0
-Requires-Dist: opencv-python>=4.8.0
-Requires-Dist: Pillow>=10.0.0
-Requires-Dist: pytesseract>=0.3.10
+Requires-Dist: sqlalchemy>=2.0.0
 Requires-Dist: python-dotenv>=1.0.0
 Requires-Dist: requests>=2.31.0
-Requires-Dist: requests-cache>=1.1.0
-Requires-Dist: PyQt6>=6.5.0
+Requires-Dist: opencv-python>=4.8.0
+Requires-Dist: pytesseract>=0.3.10
+Requires-Dist: numpy>=1.24.0
+Requires-Dist: Pillow>=10.0.0
 Requires-Dist: pytest>=7.4.0
-Requires-Dist: pytest-cov>=4.1.0
-Requires-Dist: black>=23.7.0
-Requires-Dist: flake8>=6.1.0
-Requires-Dist: isort>=5.12.0
-Requires-Dist: mypy>=1.5.0
+Requires-Dist: pytest-asyncio>=0.21.1
+Requires-Dist: flet>=0.10.0
 Dynamic: author
 Dynamic: author-email
 Dynamic: classifier
@@ -43,127 +39,94 @@ Dynamic: requires-dist
 Dynamic: requires-python
 Dynamic: summary
 
-# VHS Tape Processor
+# Media Processor
 
-An automated system for processing and identifying VHS tapes using computer vision and movie metadata.
+A powerful media digitization and cataloging tool that supports multiple physical media formats:
+- VHS Tapes
+- DVDs
+- CDs
+- Vinyl Records
+- Cassette Tapes
 
 ## Features
 
-- Capture images of VHS tapes using a mounted camera
-- Extract text from tape covers using OCR
-- Identify movies using TMDb API
-- Debug visualization of detected regions
-- CLI and GUI interfaces (GUI coming soon)
-- Result storage and caching
+- Modern, responsive GUI built with Flet
+- Support for multiple media types with specialized processing for each format
+- Image processing and OCR for text extraction
+- Integration with movie and music databases
+- Automatic metadata extraction
+- Results saving and export
+- Drag-and-drop interface
 
-## Requirements
+## Installation
 
-- Python 3.8+
-- OpenCV
-- Tesseract OCR
-- TMDb API key
+1. Clone the repository:
+```bash
+git clone [repository-url]
+cd [repository-name]
+```
 
-### Windows
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
 
-1. Install Python 3.8 or higher
-2. Install Tesseract OCR:
-   - Download installer from https://github.com/UB-Mannheim/tesseract/wiki
-   - Install to default location (`C:\Program Files\Tesseract-OCR`)
-3. Set up environment:
-   ```bat
-   python -m venv venv
-   venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
+3. Install Tesseract OCR (required for text extraction):
+- Windows: Download and install from https://github.com/UB-Mannheim/tesseract/wiki
+- Linux: `sudo apt-get install tesseract-ocr`
+- macOS: `brew install tesseract`
 
-### Linux/macOS
-
-1. Install Python 3.8 or higher
-2. Install Tesseract OCR:
-   ```bash
-   # Ubuntu/Debian
-   sudo apt install tesseract-ocr
-   
-   # macOS
-   brew install tesseract
-   ```
-3. Set up environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   ```
-
-## Configuration
-
-1. Copy example environment file:
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Configure settings in `.env`:
-   - Set `TESSERACT_CMD` to Tesseract executable path
-   - Add your TMDb API key as `TMDB_API_KEY`
-   - Adjust other settings as needed
+4. Set up environment variables:
+```bash
+cp .env.example .env
+```
+Then edit .env with your API keys and configurations.
 
 ## Usage
 
-### Command Line
-
-Process a single image:
+1. Start the application with the modern Flet interface:
 ```bash
-python -m src.cli path/to/image.jpg
+python src/main.py
 ```
 
-Enable debug output:
+Or use the legacy PyQt interface:
 ```bash
-python -m src.cli path/to/image.jpg --debug
+python src/main.py --interface pyqt
 ```
 
-### Development
+2. Select your media type from the dropdown menu
+3. Load an image by either:
+   - Dragging and dropping onto the interface
+   - Clicking "Select Image" and choosing a file
+4. Click "Process Media" to begin analysis
+5. Results will be saved to the storage/results directory
 
-Create test image:
-```bash
-python create_test_image.py "Movie Title" "1995" -o test.jpg
-```
+## Development
 
-Run tests:
-```bash
-pytest
-```
-
-Run tests with coverage:
-```bash
-pytest --cov=src
-```
-
-## Project Structure
+### Project Structure
 
 ```
-â”œâ”€â”€ src/
-â”‚   â”œâ”€â”€ config/         # Configuration
-â”‚   â”œâ”€â”€ enrichment/     # Movie data enrichment
-â”‚   â”œâ”€â”€ gui/           # GUI components (coming soon)
-â”‚   â”œâ”€â”€ hardware/      # Camera interface
-â”‚   â”œâ”€â”€ models/        # Core processing
-â”‚   â”œâ”€â”€ utils/         # Utility functions
-â”‚   â””â”€â”€ vision/        # Computer vision
-â”œâ”€â”€ tests/             # Test suite
-â”œâ”€â”€ storage/           # Results and cache
-â”‚   â”œâ”€â”€ cache/         # API cache
-â”‚   â”œâ”€â”€ images/        # Captured images
-â”‚   â””â”€â”€ results/       # Processing results
-â””â”€â”€ test_images/       # Test data
+src/
+â”œâ”€â”€ flet_gui/        # Modern Flet-based GUI
+â”œâ”€â”€ gui/             # Legacy PyQt GUI
+â”œâ”€â”€ models/          # Core data models and processors
+â”œâ”€â”€ vision/          # Image processing and OCR
+â”œâ”€â”€ enrichment/      # API integrations for metadata
+â”œâ”€â”€ utils/           # Helper utilities
+â””â”€â”€ config/          # Configuration management
 ```
+
+### Adding New Media Types
+
+1. Create a new processor class in `src/models/media_types.py`
+2. Implement the `process()` method with format-specific logic
+3. Add any necessary API integrations in `src/enrichment/`
+4. Update tests and documentation
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a pull request
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+[Your chosen license]

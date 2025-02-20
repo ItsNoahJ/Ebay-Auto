@@ -1,33 +1,77 @@
-# VHS Tape Processing System
+# Project Context
 
-## Project Overview
-Automated system for processing VHS tapes using computer vision and OCR technology.
+## Overview
+The Media Processor is a specialized application designed to streamline the process of creating eBay listings for physical media (VHS tapes, DVDs, CDs, vinyl records, cassette tapes). It uses advanced image processing and OCR to extract key information from media covers and labels.
 
-## Core Components
-1. Hardware Integration
-   - Camera/smartphone image capture
-   - Scale integration for weight measurements
-   - Optional barcode scanner support
+## Current Status
 
-2. Image Processing
-   - OpenCV for image enhancement
-   - Background/lighting normalization
-   - OCR text extraction
+### Core Features Implemented
+1. **Image Processing Pipeline**
+   - Advanced VisionProcessor with multi-stage processing
+   - Ollama Vision integration for text extraction
+   - Region of Interest (ROI) detection for different media regions
+   - Debug image output for regions
 
-3. Data Processing
-   - Text extraction and cleanup
-   - Metadata enrichment via free APIs
-   - Local caching system
+2. **Basic GUI Framework**
+   - Modern Flet-based interface
+   - File selection and preview
+   - Basic image processing workflow
+   - Results display
 
-## Technical Stack
-- Python 3.11+
-- OpenCV & Tesseract OCR
-- SQLite for local storage
-- FastAPI for service endpoints
-- Free API integrations (TMDB, Google Custom Search, Wikipedia)
+### Critical Gaps
+1. **eBay Integration**
+   - No API connection to eBay
+   - Missing listing creation functionality
+   - No template management for different media types
 
-## Cost-Effective Design
-- Local processing prioritized
-- Caching system to minimize API calls
-- Rate limit management for free API tiers
-- Fallback mechanisms for API limits
+2. **Media Processing**
+   - OCR challenges with VHS covers:
+     - Low confidence in text detection
+     - Issues with complex backgrounds
+     - Struggles with varying text styles
+   - No media type detection
+   - Missing barcode/UPC scanning
+   - No metadata enrichment from external APIs
+
+3. **User Experience**
+   - Basic error handling
+   - No progress indicators
+   - Limited feedback during processing
+   - No batch processing capability
+   - No settings/configuration UI
+
+4. **Data Management**
+   - No local database integration
+   - No history/tracking of processed items
+   - No export functionality
+   - No backup/restore features
+
+## Technical Progress
+1. **Vision Processing Improvements**
+   - Implemented Ollama Vision integration:
+     - Local LLM-based text extraction using MiniCPM-o-2_6
+     - Optimized region-specific prompting
+     - Smart confidence estimation for each region type
+     - Debug image output for visual verification
+   - Simplified image processing pipeline
+   - Created comprehensive testing framework
+   - See detailed analysis in ocr_challenges.md
+
+2. **Next Steps**
+   - Fine-tune region coordinates for optimal text capture
+   - Optimize prompts for better response accuracy
+   - Add response validation and error handling
+   - Integrate vision processor with main pipeline
+   - Add automated model verification and fallback options
+
+3. **Code Organization**
+   - Incomplete documentation
+   - Limited test coverage
+   - Missing type hints in some modules
+   - No logging system
+
+2. **Development Infrastructure**
+   - No CI/CD pipeline
+   - Limited automated testing
+   - No performance benchmarks
+   - Inconsistent error handling

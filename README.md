@@ -1,124 +1,111 @@
-# VHS Tape Processor
+# eBay Media Processor
 
-An automated system for processing and identifying VHS tapes using computer vision and movie metadata.
+A desktop application for streamlining eBay listings of physical media items (VHS, DVDs, CDs, etc.) using computer vision and OCR.
 
 ## Features
 
-- Capture images of VHS tapes using a mounted camera
-- Extract text from tape covers using OCR
-- Identify movies using TMDb API
-- Debug visualization of detected regions
-- CLI and GUI interfaces (GUI coming soon)
-- Result storage and caching
+- Automatic media type detection (VHS, DVD, CD)
+- Text extraction using OCR (titles, years, runtime)
+- Barcode scanning and database lookup
+- Progress tracking and debug visualization
+- Local database storage
+- Modern dark-themed GUI
 
 ## Requirements
 
-- Python 3.8+
-- OpenCV
+- Python 3.10+
 - Tesseract OCR
-- TMDb API key
+- ZBar (for barcode scanning)
 
-### Windows
+### System Dependencies
 
-1. Install Python 3.8 or higher
-2. Install Tesseract OCR:
-   - Download installer from https://github.com/UB-Mannheim/tesseract/wiki
-   - Install to default location (`C:\Program Files\Tesseract-OCR`)
-3. Set up environment:
-   ```bat
-   python -m venv venv
-   venv\Scripts\activate
+1. Install Tesseract OCR:
+   - Windows: Download and install from [UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki)
+   - Mac: `brew install tesseract`
+   - Linux: `sudo apt-get install tesseract-ocr`
+
+2. Install ZBar:
+   - Windows: Download and install from [here](https://sourceforge.net/projects/zbar/files/zbar/0.10/)
+   - Mac: `brew install zbar`
+   - Linux: `sudo apt-get install libzbar0`
+
+## Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/ebay-media-processor.git
+   cd ebay-media-processor
+   ```
+
+2. Create and activate virtual environment:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   ```
+
+3. Install Python dependencies:
+   ```bash
    pip install -r requirements.txt
    ```
-
-### Linux/macOS
-
-1. Install Python 3.8 or higher
-2. Install Tesseract OCR:
-   ```bash
-   # Ubuntu/Debian
-   sudo apt install tesseract-ocr
-   
-   # macOS
-   brew install tesseract
-   ```
-3. Set up environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   ```
-
-## Configuration
-
-1. Copy example environment file:
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Configure settings in `.env`:
-   - Set `TESSERACT_CMD` to Tesseract executable path
-   - Add your TMDb API key as `TMDB_API_KEY`
-   - Adjust other settings as needed
 
 ## Usage
 
-### Command Line
+1. Run the application:
+   ```bash
+   python run_app.py
+   ```
 
-Process a single image:
-```bash
-python -m src.cli path/to/image.jpg
-```
+2. Select a media image using the "Choose File" button
+3. Click "Process Image" to analyze
+4. Review detected information and create eBay listing
 
-Enable debug output:
-```bash
-python -m src.cli path/to/image.jpg --debug
-```
+## Configuration
 
-### Development
+- Environment variables in `.env`:
+  ```
+  DEBUG=False
+  TESSERACT_PATH=/usr/bin/tesseract  # Adjust for your system
+  ```
 
-Create test image:
-```bash
-python create_test_image.py "Movie Title" "1995" -o test.jpg
-```
+## Development
 
-Run tests:
-```bash
-pytest
-```
-
-Run tests with coverage:
-```bash
-pytest --cov=src
-```
-
-## Project Structure
+### Project Structure
 
 ```
+ebay-media-processor/
 ├── src/
-│   ├── config/         # Configuration
-│   ├── enrichment/     # Movie data enrichment
-│   ├── gui/           # GUI components (coming soon)
-│   ├── hardware/      # Camera interface
-│   ├── models/        # Core processing
-│   ├── utils/         # Utility functions
-│   └── vision/        # Computer vision
-├── tests/             # Test suite
-├── storage/           # Results and cache
-│   ├── cache/         # API cache
-│   ├── images/        # Captured images
-│   └── results/       # Processing results
-└── test_images/       # Test data
+│   ├── barcode/         # Barcode detection
+│   ├── flet_gui/        # GUI components
+│   ├── models/          # Database models
+│   ├── vision/          # Image processing
+├── tests/               # Unit tests
+├── .env                 # Environment variables
+├── requirements.txt     # Dependencies
 ```
+
+### Running Tests
+
+```bash
+pytest tests/
+```
+
+### Debug Output
+
+Debug images are saved to `debug_output/` showing each processing stage:
+- Original image
+- Grayscale conversion
+- Enhanced contrast
+- Character regions
+- Detected barcodes
 
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a pull request
+2. Create your feature branch
+3. Make your changes
+4. Run tests
+5. Submit a pull request
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT License - See LICENSE file for details

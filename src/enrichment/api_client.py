@@ -1,150 +1,168 @@
 """
-TMDb API client module.
+API client for enriching media metadata.
 """
-import logging
-import time
-from pathlib import Path
-from typing import Dict, List, Optional
-
+from typing import Dict, Any, Optional
 import requests
-import requests_cache
+from ..config.settings import TMDB_API_KEY, DISCOGS_API_KEY
 
-from ..config.settings import API_SETTINGS, STORAGE_PATHS
-
-class TMDbClient:
-    """TMDb API client."""
+def search_movie_details(text: str) -> Dict[str, Any]:
+    """
+    Search for movie details using TMDB API.
     
-    # Base URL
-    BASE_URL = "https://api.themoviedb.org/3"
+    Args:
+        text: Extracted text from media cover
+        
+    Returns:
+        Dictionary of movie details
+    """
+    # Default empty results
+    results = {
+        'title': None,
+        'year': None,
+        'runtime': None,
+        'genre': None,
+        'director': None,
+        'cast': [],
+        'plot': None
+    }
     
-    def __init__(self):
-        """Initialize client."""
-        self.logger = logging.getLogger(__name__)
+    if not TMDB_API_KEY:
+        print("Warning: TMDB_API_KEY not set")
+        return results
         
-        # Initialize state
-        self.api_key = API_SETTINGS["tmdb_api_key"]
-        self.last_request = 0
-        self.requests_this_window = 0
+    try:
+        # Extract potential title from first few lines
+        potential_title = text.split('\n')[0].strip()
         
-        # Configure cache
-        cache_path = STORAGE_PATHS["cache"] / "tmdb_cache"
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        requests_cache.install_cache(
-            str(cache_path),
-            backend="sqlite",
-            expire_after=API_SETTINGS["cache_ttl"]
+        # Search TMDB
+        response = requests.get(
+            'https://api.themoviedb.org/3/search/movie',
+            params={
+                'api_key': TMDB_API_KEY,
+                'query': potential_title,
+                'language': 'en-US',
+                'page': 1,
+                'include_adult': False
+            }
         )
         
-    def _enforce_rate_limit(self):
-        """Enforce API rate limiting."""
-        # Get current time
-        now = time.time()
-        
-        # Check if we're in a new window
-        window_size = API_SETTINGS["rate_window"]
-        
-        if now - self.last_request > window_size:
-            self.requests_this_window = 0
-            
-        # Check rate limit
-        rate_limit = API_SETTINGS["rate_limit"]
-        
-        if self.requests_this_window >= rate_limit:
-            # Calculate sleep time
-            sleep_time = window_size - (now - self.last_request)
-            
-            if sleep_time > 0:
-                time.sleep(sleep_time)
+        if response.status_code == 200:
+            data = response.json()
+            if data['results']:
+                movie = data['results'][0]
                 
-            # Reset counter
-            self.requests_this_window = 0
-            
-        # Update state
-        self.last_request = now
-        self.requests_this_window += 1
-        
-    def _make_request(
-        self,
-        endpoint: str,
-        params: Optional[Dict] = None
-    ) -> Optional[Dict]:
-        """
-        Make API request.
-        
-        Args:
-            endpoint: API endpoint
-            params: Query parameters
-            
-        Returns:
-            Response data if successful, None otherwise
-        """
-        try:
-            # Enforce rate limit
-            self._enforce_rate_limit()
-            
-            # Add API key
-            if params is None:
-                params = {}
+                # Get additional details
+                movie_id = movie['id']
+                details = requests.get(
+                    f'https://api.themoviedb.org/3/movie/{movie_id}',
+                    params={
+                        'api_key': TMDB_API_KEY,
+                        'language': 'en-US',
+                        'append_to_response': 'credits'
+                    }
+                ).json()
                 
-            params["api_key"] = self.api_key
-            
-            # Make request
-            url = f"{self.BASE_URL}/{endpoint}"
-            
-            for attempt in range(API_SETTINGS["max_retries"]):
-                try:
-                    response = requests.get(
-                        url,
-                        params=params,
-                        timeout=API_SETTINGS["timeout"]
-                    )
+                # Update results
+                results.update({
+                    'title': movie['title'],
+                    'year': int(movie['release_date'][:4]) if movie.get('release_date') else None,
+                    'runtime': details.get('runtime'),
+                    'genre': [g['name'] for g in details.get('genres', [])],
+                    'plot': movie['overview'],
+                })
+                
+                # Get credits
+                if 'credits' in details:
+                    # Get director
+                    directors = [
+                        crew['name'] for crew in details['credits'].get('crew', [])
+                        if crew['job'].lower() == 'director'
+                    ]
+                    if directors:
+                        results['director'] = directors[0]
                     
-                    # Check status
-                    response.raise_for_status()
-                    
-                    return response.json()
-                    
-                except requests.RequestException as e:
-                    if attempt == API_SETTINGS["max_retries"] - 1:
-                        raise
-                    
-                    # Wait before retry
-                    time.sleep(2 ** attempt)
-                    
-        except Exception as e:
-            self.logger.exception("Request error")
-            return None
-            
-    def search_movies(self, query: str) -> List[Dict]:
-        """
-        Search for movies.
+                    # Get cast
+                    cast = details['credits'].get('cast', [])
+                    results['cast'] = [
+                        person['name'] for person in cast[:5]  # Top 5 cast members
+                    ]
+                
+    except Exception as e:
+        print(f"Error fetching movie details: {e}")
         
-        Args:
-            query: Search query
-            
-        Returns:
-            List of movie results
-        """
-        # Make request
-        data = self._make_request(
-            "search/movie",
-            {"query": query}
-        )
+    return results
+
+def search_audio_details(text: str, media_type: str) -> Dict[str, Any]:
+    """
+    Search for audio media details using Discogs API.
+    
+    Args:
+        text: Extracted text from media cover
+        media_type: Type of audio media (CD, VINYL, CASSETTE)
         
-        if not data:
-            return []
-            
-        return data.get("results", [])
+    Returns:
+        Dictionary of audio details
+    """
+    results = {
+        'artist': None,
+        'album': None,
+        'year': None,
+        'genre': None,
+        'label': None,
+        'format': None,
+        'tracks': []
+    }
+    
+    if not DISCOGS_API_KEY:
+        print("Warning: DISCOGS_API_KEY not set")
+        return results
         
-    def get_movie(self, movie_id: int) -> Optional[Dict]:
-        """
-        Get movie details.
-        
-        Args:
-            movie_id: TMDb movie ID
+    try:
+        # Extract potential artist/album from first few lines
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        if len(lines) >= 2:
+            potential_artist = lines[0]
+            potential_album = lines[1]
             
-        Returns:
-            Movie data if found, None otherwise
-        """
-        return self._make_request(f"movie/{movie_id}")
+            # Search Discogs
+            response = requests.get(
+                'https://api.discogs.com/database/search',
+                params={
+                    'key': DISCOGS_API_KEY,
+                    'artist': potential_artist,
+                    'release_title': potential_album,
+                    'type': 'release'
+                },
+                headers={'User-Agent': 'MediaProcessor/1.0'}
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data['results']:
+                    release = data['results'][0]
+                    
+                    # Get detailed release info
+                    release_id = release['id']
+                    details = requests.get(
+                        f'https://api.discogs.com/releases/{release_id}',
+                        headers={'User-Agent': 'MediaProcessor/1.0'}
+                    ).json()
+                    
+                    # Update results
+                    results.update({
+                        'artist': details.get('artists_sort'),
+                        'album': details.get('title'),
+                        'year': details.get('year'),
+                        'genre': details.get('genres', []),
+                        'label': details.get('labels', [{}])[0].get('name'),
+                        'format': details.get('formats', [{}])[0].get('name'),
+                        'tracks': [
+                            track['title']
+                            for track in details.get('tracklist', [])
+                        ]
+                    })
+                    
+    except Exception as e:
+        print(f"Error fetching audio details: {e}")
+        
+    return results

@@ -1,56 +1,102 @@
 """
-OpenCV utility functions.
+OpenCV utility functions for image processing.
 """
-from typing import List, Tuple
-
 import cv2
 import numpy as np
+from typing import List, Tuple
 
-def resize_image(
-    image: np.ndarray,
-    width: int = None,
-    height: int = None
-) -> np.ndarray:
+def resize_image(image: np.ndarray, width: int = None, height: int = None) -> np.ndarray:
     """
-    Resize image maintaining aspect ratio.
+    Resize image while maintaining aspect ratio.
     
     Args:
         image: Input image
-        width: Target width
-        height: Target height
+        width: Target width (optional)
+        height: Target height (optional)
         
     Returns:
         Resized image
     """
-    # Get dimensions
-    h, w = image.shape[:2]
-    
-    # Calculate new dimensions
-    if width is not None and height is not None:
-        # Both dimensions specified
-        new_w = width
-        new_h = height
-    elif width is not None:
-        # Width specified, maintain ratio
-        ratio = width / w
-        new_w = width
-        new_h = int(h * ratio)
-    elif height is not None:
-        # Height specified, maintain ratio
-        ratio = height / h
-        new_h = height
-        new_w = int(w * ratio)
-    else:
-        # No resize needed
+    if width is None and height is None:
         return image
         
-    # Resize image
-    return cv2.resize(
-        image,
-        (new_w, new_h),
-        interpolation=cv2.INTER_AREA
+    h, w = image.shape[:2]
+    if width is None:
+        aspect = height / h
+        width = int(w * aspect)
+    elif height is None:
+        aspect = width / w
+        height = int(h * aspect)
+        
+    return cv2.resize(image, (width, height))
+
+def enhance_image(
+    image: np.ndarray,
+    sharpen: bool = False,
+    contrast: bool = True,
+    denoise: bool = True
+) -> np.ndarray:
+    """
+    Enhance image for better OCR with improved preprocessing pipeline.
+    
+    Args:
+        image: Input image
+        sharpen: Apply sharpening
+        contrast: Enhance contrast
+        denoise: Apply denoising
+        
+    Returns:
+        Enhanced image
+    """
+    # Convert to grayscale if needed
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
+    
+    # Resize if image is too small
+    min_dim = min(gray.shape[0], gray.shape[1])
+    if min_dim < 1000:
+        scale = 1000.0 / min_dim
+        gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+    
+    # Basic noise reduction
+    if denoise:
+        gray = cv2.medianBlur(gray, 3)
+    
+    # Enhance contrast
+    if contrast:
+        # Normalize histogram
+        gray = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX)
+        
+        # Local contrast enhancement
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+        gray = clahe.apply(gray)
+    
+    # Simple sharpening
+    if sharpen:
+        kernel = np.array([[-1,-1,-1],
+                          [-1, 9,-1],
+                          [-1,-1,-1]])
+        gray = cv2.filter2D(gray, -1, kernel)
+    
+    # Thresholding with small block size for better text detection
+    binary = cv2.adaptiveThreshold(
+        gray,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        15,  # smaller block size
+        5    # constant subtracted from mean
     )
     
+    # Clean up noise and connect text components
+    kernel = np.ones((2,2), np.uint8)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+    
+    return binary
+
 def detect_edges(image: np.ndarray) -> np.ndarray:
     """
     Detect edges in image.
@@ -59,7 +105,7 @@ def detect_edges(image: np.ndarray) -> np.ndarray:
         image: Input image
         
     Returns:
-        Edge detection result
+        Edge image
     """
     # Convert to grayscale
     if len(image.shape) == 3:
@@ -67,18 +113,12 @@ def detect_edges(image: np.ndarray) -> np.ndarray:
     else:
         gray = image.copy()
         
-    # Blur image
+    # Blur and detect edges
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    
-    # Detect edges
     edges = cv2.Canny(blurred, 50, 150)
     
-    # Clean up
-    kernel = np.ones((3, 3), np.uint8)
-    edges = cv2.dilate(edges, kernel, iterations=1)
-    
     return edges
-    
+
 def detect_rectangles(
     edges: np.ndarray,
     min_area: int = 1000,
@@ -89,7 +129,7 @@ def detect_rectangles(
     Detect rectangles in edge image.
     
     Args:
-        edges: Edge detection result
+        edges: Edge image
         min_area: Minimum contour area
         max_area: Maximum contour area
         epsilon_factor: Approximation accuracy factor
@@ -100,21 +140,18 @@ def detect_rectangles(
     # Find contours
     contours, _ = cv2.findContours(
         edges,
-        cv2.RETR_EXTERNAL,
+        cv2.RETR_LIST,
         cv2.CHAIN_APPROX_SIMPLE
     )
     
-    # Process contours
     rectangles = []
     
     for cnt in contours:
-        # Get area
         area = cv2.contourArea(cnt)
         
-        # Check area
+        # Filter by area
         if area < min_area:
             continue
-            
         if max_area and area > max_area:
             continue
             
@@ -122,27 +159,27 @@ def detect_rectangles(
         epsilon = epsilon_factor * cv2.arcLength(cnt, True)
         approx = cv2.approxPolyDP(cnt, epsilon, True)
         
-        # Check if rectangle (4 corners)
+        # Check if approximately rectangular (4 points)
         if len(approx) == 4:
             rectangles.append(approx)
             
     return rectangles
-    
+
 def detect_text_regions(
     image: np.ndarray,
     block_size: int = 11,
-    c: int = 9
+    c: int = 2
 ) -> List[Tuple[int, int, int, int]]:
     """
-    Detect text regions using adaptive thresholding.
+    Detect potential text regions in image.
     
     Args:
         image: Input image
-        block_size: Block size for adaptive threshold
-        c: Constant subtracted from mean
+        block_size: Block size for adaptive thresholding
+        c: Constant for adaptive thresholding
         
     Returns:
-        List of region bounding boxes (x, y, w, h)
+        List of (x, y, w, h) bounding boxes
     """
     # Convert to grayscale
     if len(image.shape) == 3:
@@ -150,7 +187,7 @@ def detect_text_regions(
     else:
         gray = image.copy()
         
-    # Apply adaptive threshold
+    # Threshold
     thresh = cv2.adaptiveThreshold(
         gray,
         255,
@@ -169,46 +206,21 @@ def detect_text_regions(
     
     # Get bounding boxes
     boxes = []
-    
     for cnt in contours:
         x, y, w, h = cv2.boundingRect(cnt)
+        
+        # Filter by size
+        if w < 10 or h < 10:  # Too small
+            continue
+        if w > image.shape[1] * 0.9:  # Too wide
+            continue
+        if h > image.shape[0] * 0.9:  # Too tall
+            continue
+            
         boxes.append((x, y, w, h))
         
     return boxes
-    
-def enhance_image(image: np.ndarray) -> np.ndarray:
-    """
-    Enhance image for OCR.
-    
-    Args:
-        image: Input image
-        
-    Returns:
-        Enhanced image
-    """
-    # Convert to grayscale
-    if len(image.shape) == 3:
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    else:
-        gray = image.copy()
-        
-    # Denoise
-    denoised = cv2.fastNlMeansDenoising(gray)
-    
-    # Increase contrast
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    enhanced = clahe.apply(denoised)
-    
-    # Threshold
-    _, thresh = cv2.threshold(
-        enhanced,
-        0,
-        255,
-        cv2.THRESH_BINARY + cv2.THRESH_OTSU
-    )
-    
-    return thresh
-    
+
 def draw_debug_image(
     image: np.ndarray,
     regions: List[dict]
@@ -223,30 +235,23 @@ def draw_debug_image(
     Returns:
         Debug image
     """
-    # Create copy
     debug = image.copy()
     
-    # Draw regions
     for region in regions:
-        # Get contour
-        contour = np.array(region["coords"])
-        
-        # Draw rectangle
+        # Draw region polygon
         cv2.drawContours(
             debug,
-            [contour],
+            [np.array(region["coords"])],
             -1,
             (0, 255, 0),
             2
         )
         
-        # Get bounding box
-        x, y, w, h = cv2.boundingRect(contour)
-        
         # Draw text
+        x, y = region["coords"][0][0]
         cv2.putText(
             debug,
-            f"Text: {len(region['text'])} chars",
+            region["text"][:20] + "...",
             (x, y - 10),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,

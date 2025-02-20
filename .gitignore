@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Debug and Test Output
+debug_output/
+vision_results_*.json
+debug.log.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project Specific
+test_images/*
+!test_images/sample.jpg
+storage/*
+!storage/.gitkeep
+config/*
+!config/media_features.json
+
+# Environment Variables
+.env
+.env.example
+
+# OS specific
+.DS_Store
+Thumbs.db

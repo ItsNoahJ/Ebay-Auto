@@ -1,237 +1,299 @@
 """
-Vision processing module.
+Vision processing module for media image analysis.
 """
-import logging
-import time
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-
+import os
 import cv2
 import numpy as np
+from typing import Dict, Any, Tuple, Optional
 import pytesseract
-
-from ..config.settings import STORAGE_PATHS, VISION_SETTINGS
-from ..utils.opencv_utils import (
-    detect_edges,
-    detect_rectangles,
-    detect_text_regions,
-    draw_debug_image,
-    enhance_image,
-    resize_image
-)
+import os
+from datetime import datetime
+from src.models.media_detector import MediaDetector
+from src.barcode.scanner import BarcodeScanner
 
 class VisionProcessor:
-    """Vision processor for VHS tapes."""
-    
-    def __init__(self):
-        """Initialize processor."""
-        self.logger = logging.getLogger(__name__)
+    """
+    Handles image processing and OCR for media images.
+    """
+    def __init__(self, debug_output_dir: str = "debug_output"):
+        """Initialize the vision processor."""
+        self.debug_output_dir = debug_output_dir
+        os.makedirs(debug_output_dir, exist_ok=True)
         
-        # Configure Tesseract
-        if VISION_SETTINGS["tesseract_cmd"]:
-            pytesseract.pytesseract.tesseract_cmd = (
-                VISION_SETTINGS["tesseract_cmd"]
-            )
-            
-    def calculate_sharpness(self, image: np.ndarray) -> float:
-        """
-        Calculate image sharpness.
+        # Initialize components
+        self.media_detector = MediaDetector()
+        self.barcode_scanner = BarcodeScanner(debug_output_dir=debug_output_dir)
         
-        Args:
-            image: Input image
-            
-        Returns:
-            Sharpness score
-        """
-        # Convert to grayscale
-        if len(image.shape) == 3:
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        else:
-            gray = image.copy()
-            
-        # Calculate Laplacian variance
-        return cv2.Laplacian(gray, cv2.CV_64F).var()
+        # Lower confidence threshold for initial results
+        self.confidence_threshold = 5
         
-    def preprocess_image(
-        self,
-        image: np.ndarray
-    ) -> Tuple[np.ndarray, Dict]:
-        """
-        Preprocess image.
+        # Configure Tesseract path
+        if os.name == 'nt':  # Windows
+            pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
         
-        Args:
-            image: Input image
-            
-        Returns:
-            Tuple of (processed image, metadata)
-        """
-        # Calculate size
-        height, width = image.shape[:2]
-        
-        # Calculate sharpness
-        sharpness = self.calculate_sharpness(image)
-        
-        # Resize if needed
-        target_width = VISION_SETTINGS["target_width"]
-        
-        if width > target_width:
-            image = resize_image(image, width=target_width)
-            
-        # Create metadata
-        data = {
-            "image_size": f"{width}x{height}",
-            "sharpness": sharpness
+        # Optimized ROI regions for VHS tapes
+        self.roi_regions = {
+            "title": (0.05, 0.02, 0.95, 0.25),  # Wider region for title
+            "year": (0.1, 0.3, 0.45, 0.45),     # Adjusted for typical VHS layout
+            "runtime": (0.55, 0.3, 0.9, 0.45)    # Adjusted for typical VHS layout
         }
         
-        return image, data
+        # Enhanced Tesseract configurations for VHS text
+        self.ocr_configs = {
+            "title": "--psm 6 --oem 3",  # Assume uniform block of text
+            "year": "--psm 7 -c tessedit_char_whitelist=0123456789",  # Assume single line, numbers only
+            "runtime": "--psm 7 -c tessedit_char_whitelist=0123456789:" # Assume single line, numbers and colon
+        }
+
+    def _save_debug_image(self, img: np.ndarray, stage: str) -> str:
+        """Save debug image with timestamp."""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{stage}_{timestamp}.jpg"
+        path = os.path.join(self.debug_output_dir, filename)
+        cv2.imwrite(path, img)
+        return path
+
+    def _enhance_contrast(self, image: np.ndarray) -> np.ndarray:
+        """Advanced contrast enhancement with multiple techniques."""
+        # Convert to float32
+        img_float = image.astype(np.float32) / 255.0
         
-    def capture_regions(
-        self,
-        image: np.ndarray
-    ) -> List[Dict]:
-        """
-        Capture text regions.
+        # Apply CLAHE for local contrast enhancement
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+        clahe_1 = clahe.apply((img_float * 255).astype(np.uint8))
         
-        Args:
-            image: Input image
+        # Gamma correction to boost mid-tones
+        gamma = 1.5
+        gamma_corrected = np.power(clahe_1 / 255.0, gamma)
+        gamma_corrected = (gamma_corrected * 255).astype(np.uint8)
+        
+        # Second pass CLAHE with different parameters
+        clahe_2 = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4,4))
+        clahe_result = clahe_2.apply(gamma_corrected)
+        
+        # Local contrast enhancement using unsharp masking
+        blur = cv2.GaussianBlur(clahe_result, (0, 0), 3.0)
+        unsharp_mask = cv2.addWeighted(clahe_result, 1.5, blur, -0.5, 0)
+        
+        # Normalize to ensure full dynamic range
+        min_val = np.min(unsharp_mask)
+        max_val = np.max(unsharp_mask)
+        
+        if max_val > min_val:
+            normalized = np.clip(((unsharp_mask - min_val) * 255.0) / 
+                               (max_val - min_val), 0, 255).astype(np.uint8)
+        else:
+            normalized = unsharp_mask
             
-        Returns:
-            List of region data
-        """
-        # Detect edges
-        edges = detect_edges(image)
+        return normalized
+
+    def _find_character_regions(self, image: np.ndarray) -> np.ndarray:
+        """Enhanced character region detection using multiple techniques."""
+        # Create HSV version for color-based segmentation
+        hsv = cv2.cvtColor(cv2.cvtColor(image, cv2.COLOR_GRAY2BGR), cv2.COLOR_BGR2HSV)
         
-        # Detect rectangles
-        rectangles = detect_rectangles(
-            edges,
-            min_area=VISION_SETTINGS["min_cover_area"],
-            max_area=int(
-                image.shape[0] * image.shape[1] *
-                VISION_SETTINGS["max_cover_area_ratio"]
-            ),
-            epsilon_factor=VISION_SETTINGS["epsilon_factor"]
-        )
+        # Extract value channel and enhance it
+        v_channel = hsv[:,:,2]
+        enhanced_v = self._enhance_contrast(v_channel)
         
-        # Process each rectangle
-        regions = []
+        # Lighter denoising to preserve more detail
+        denoised = cv2.fastNlMeansDenoising(enhanced_v, 
+                                           h=7,
+                                           templateWindowSize=5,
+                                           searchWindowSize=15)
         
-        for rect in rectangles:
-            # Create mask
-            mask = np.zeros(image.shape[:2], dtype=np.uint8)
-            cv2.drawContours(mask, [rect], -1, 255, -1)
-            
-            # Extract region
-            region = cv2.bitwise_and(image, image, mask=mask)
-            
-            # Detect text regions
-            boxes = detect_text_regions(
-                region,
-                block_size=VISION_SETTINGS["text_block_size"],
-                c=VISION_SETTINGS["text_c"]
-            )
-            
-            # Extract text
-            texts = []
-            
-            for x, y, w, h in boxes:
-                # Get text region
-                text_region = region[y:y+h, x:x+w]
-                
-                # Enhance region
-                enhanced = enhance_image(text_region)
-                
-                # Extract text
-                text = pytesseract.image_to_string(
-                    enhanced,
-                    config=VISION_SETTINGS["tesseract_config"]
-                )
-                
-                if text.strip():
-                    texts.append(text.strip())
-                    
-            # Create region data
-            if texts:
-                regions.append({
-                    "coords": rect.tolist(),
-                    "text": "\n".join(texts)
-                })
-                
-        return regions
+        # Multi-level thresholding
+        thresh_methods = [
+            lambda img: cv2.threshold(img, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1],
+            lambda img: cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1],
+            lambda img: cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                           cv2.THRESH_BINARY, 11, 2)
+        ]
         
-    def process_image(
-        self,
-        image_path: str,
-        debug: bool = False
-    ) -> Dict:
-        """
-        Process image file.
+        # Combine results from different thresholding methods
+        binary_masks = []
+        for thresh_method in thresh_methods:
+            binary = thresh_method(denoised)
+            binary_masks.append(binary)
         
-        Args:
-            image_path: Path to image file
-            debug: Enable debug output
-            
-        Returns:
-            Processing results
-        """
+        # Combine masks
+        combined_mask = np.zeros_like(image)
+        for mask in binary_masks:
+            combined_mask = cv2.bitwise_or(combined_mask, mask)
+        
+        return combined_mask
+
+    def _preprocess_image(self, image: np.ndarray, media_type: str) -> Tuple[np.ndarray, Dict[str, Any]]:
+        """Enhanced preprocessing pipeline with media-specific handling."""
+        # Get media-specific features
+        media_features = self.media_detector.get_media_features(media_type)
+        if media_features:
+            self.roi_regions = dict(zip(
+                ["title", "year", "runtime"],
+                media_features['text_regions']
+            ))
+        
+        debug_info = {}
+        
+        # Convert to grayscale
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        debug_info['grayscale'] = self._save_debug_image(gray, "grayscale")
+        
+        # Enhance contrast
+        enhanced = self._enhance_contrast(gray)
+        debug_info['enhanced'] = self._save_debug_image(enhanced, "enhanced")
+        
+        # Find character regions
+        char_regions = self._find_character_regions(enhanced)
+        debug_info['char_regions'] = self._save_debug_image(char_regions, "char_regions")
+        
+        # Denoise
+        denoised = cv2.fastNlMeansDenoising(char_regions, h=10)
+        debug_info['denoised'] = self._save_debug_image(denoised, "denoised")
+        
+        return denoised, debug_info
+
+    def _extract_roi_text(self, image: np.ndarray, region: Tuple[float, float, float, float], region_name: str) -> Tuple[str, float]:
+        """Extract text from ROI with improved processing."""
+        # Extract ROI
+        height, width = image.shape[:2]
+        x1 = int(width * region[0])
+        y1 = int(height * region[1])
+        x2 = int(width * region[2])
+        y2 = int(height * region[3])
+        roi = image[y1:y2, x1:x2]
+        
+        # Add padding
+        pad = 20
+        roi = cv2.copyMakeBorder(roi, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=255)
+        
+        self._save_debug_image(roi, f"roi_{region_name}")
+        
+        # Multiple preprocessing attempts
+        results = []
+        
+        # Original
+        results.append(self._ocr_with_config(roi, self.ocr_configs[region_name]))
+        
+        # Inverted
+        inverted = cv2.bitwise_not(roi)
+        results.append(self._ocr_with_config(inverted, self.ocr_configs[region_name]))
+        
+        # Dilated
+        kernel = np.ones((2,2), np.uint8)
+        dilated = cv2.dilate(roi, kernel, iterations=2)
+        results.append(self._ocr_with_config(dilated, self.ocr_configs[region_name]))
+        
+        # Eroded
+        eroded = cv2.erode(roi, kernel, iterations=1)
+        results.append(self._ocr_with_config(eroded, self.ocr_configs[region_name]))
+        
+        # Filter and select best result
+        valid_results = [(text, conf) for text, conf in results if text and conf > 0]
+        if not valid_results:
+            return "", 0.0
+        
+        return max(valid_results, key=lambda x: (x[1], len(x[0])))
+
+    def _ocr_with_config(self, image: np.ndarray, config: str) -> Tuple[str, float]:
+        """Perform OCR with enhanced preprocessing and result processing."""
         try:
-            # Start timing
-            start_time = time.time()
+            # Scale up image to improve OCR
+            height, width = image.shape[:2]
+            scale = max(1, int(1000 / min(width, height)))
+            if scale > 1:
+                image = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+
+            # Bilateral filter to reduce noise while preserving edges
+            image = cv2.bilateralFilter(image, 9, 75, 75)
             
-            # Load image
-            image = cv2.imread(image_path)
+            # Ensure black text on white background
+            if np.mean(image) < 127:
+                image = cv2.bitwise_not(image)
+
+            data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT, config=config)
             
-            if image is None:
-                raise RuntimeError(f"Failed to load image: {image_path}")
-                
-            # Preprocess image
-            image, data = self.preprocess_image(image)
+            text_parts = []
+            conf_sum = 0
+            conf_count = 0
             
-            # Capture regions
-            regions = self.capture_regions(image)
+            for i, conf in enumerate(data["conf"]):
+                if conf > 0:
+                    text = data["text"][i].strip()
+                    if text:
+                        # Additional text cleaning based on field
+                        if "tessedit_char_whitelist=0123456789" in config:
+                            text = ''.join(c for c in text if c.isdigit())
+                        text_parts.append(text)
+                        conf_sum += conf
+                        conf_count += 1
             
-            # Create results
-            texts = []
-            for region in regions:
-                texts.append(region["text"])
-                
-            # Add data
-            data.update({
-                "rectangles": len(regions),
-                "text_regions": sum(
-                    1 for r in regions if r["text"]
-                ),
-                "processing_time": time.time() - start_time
-            })
+            if conf_count == 0:
+                return "", 0.0
             
-            results = {
-                "success": True,
-                "texts": texts,
-                "vision_data": data
-            }
+            text = " ".join(text_parts)
+            text = " ".join(text.split())  # Normalize whitespace
             
-            # Add debug data
-            if debug:
-                debug_path = str(
-                    STORAGE_PATHS["debug"] /
-                    Path(image_path).with_suffix(".debug.jpg").name
-                )
-                
-                # Create directory
-                Path(debug_path).parent.mkdir(parents=True, exist_ok=True)
-                
-                # Create debug image
-                debug_image = draw_debug_image(image, regions)
-                
-                # Save debug image
-                cv2.imwrite(debug_path, debug_image)
-                
-                results["debug_image"] = debug_path
-                
-            return results
+            # Calculate weighted confidence score
+            confidence = (conf_sum / conf_count) * min(1, len(text) / 3)  # Reduce confidence for very short results
+            
+            return text, confidence
             
         except Exception as e:
-            self.logger.exception("Processing error")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            print(f"OCR error: {e}")
+            return "", 0.0
+
+    def process_image(self, image_path: str) -> Dict[str, Any]:
+        """Process media image with comprehensive pipeline."""
+        # Load image
+        image = cv2.imread(image_path)
+        if image is None:
+            raise ValueError(f"Failed to load image: {image_path}")
+        
+        # Save original for debug
+        orig_debug_path = self._save_debug_image(image, "original")
+        
+        # Detect media type
+        media_type, type_confidence = self.media_detector.detect_media_type(image)
+        
+        # Scan for barcodes
+        barcode_results = self.barcode_scanner.scan_image(image)
+        
+        # Preprocess image with media-specific handling
+        processed, debug_paths = self._preprocess_image(image, media_type)
+        proc_debug_path = self._save_debug_image(processed, "preprocessed")
+        
+        # Extract text from regions
+        results = {}
+        debug_info = {
+            "original_image": orig_debug_path,
+            "processed_image": proc_debug_path,
+            "debug_images": debug_paths,
+            "confidence_scores": {},
+            "media_type": {
+                "detected": media_type,
+                "confidence": type_confidence
+            },
+            "barcode_info": barcode_results["debug_info"]
+        }
+        
+        for region_name, coords in self.roi_regions.items():
+            text, confidence = self._extract_roi_text(processed, coords, region_name)
+            results[region_name] = text
+            debug_info["confidence_scores"][region_name] = confidence
+        
+        # Add barcode data if found
+        if barcode_results["barcodes"]:
+            results["barcode"] = barcode_results["barcodes"][0]["data"]
+            if "metadata" in barcode_results["barcodes"][0]:
+                results["barcode_metadata"] = barcode_results["barcodes"][0]["metadata"]
+        
+        return {
+            "extracted_data": results,
+            "debug_info": debug_info
+        }
+
+    def validate_results(self, results: Dict[str, Any]) -> bool:
+        """Validate results with confidence threshold."""
+        confidence_scores = results["debug_info"]["confidence_scores"]
+        return all(score >= self.confidence_threshold for score in confidence_scores.values())

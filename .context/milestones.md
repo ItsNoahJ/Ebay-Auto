@@ -1,32 +1,71 @@
 # Project Milestones
 
-## Phase 1: Initial Implementation (Completed)
-- [x] Created project structure and documentation
-- [x] Implemented core camera interface module
-- [x] Built image processing and OCR functionality
-- [x] Added data enrichment with TMDB and Google APIs
-- [x] Created central coordinator for workflow management
-- [x] Developed CLI interface for system interaction
-- [x] Added initial test suite
-- [x] Set up configuration management
+## Completed Milestones
 
-## Next Steps
+### Core Image Processing
+- ✓ Implemented VisionProcessor class with multi-stage processing pipeline
+- ✓ Integrated Tesseract OCR with custom configurations
+- ✓ Added ROI detection for media text regions
+- ✓ Implemented debug image output system
+- ✓ Created advanced preprocessing techniques (contrast enhancement, denoising, etc.)
 
-### Phase 2: Enhanced Features
-- [ ] Add web interface for easier interaction
-- [ ] Implement advanced image preprocessing techniques
-- [ ] Add support for barcode scanning
-- [ ] Develop weight measurement integration
-- [ ] Create batch export functionality
+### Basic GUI Implementation
+- ✓ Created modern Flet-based interface
+- ✓ Added file selection and preview functionality
+- ✓ Implemented basic image processing workflow
+- ✓ Added results display panel
 
-### Phase 3: Optimization
-- [ ] Implement parallel processing for batch operations
-- [ ] Optimize API usage patterns
-- [ ] Enhance error recovery mechanisms
-- [ ] Add comprehensive logging system
+## Current Sprint (Alpha Preparation)
 
-### Phase 4: Production Readiness
-- [ ] Add full test coverage
-- [ ] Create deployment documentation
-- [ ] Implement monitoring and analytics
-- [ ] Add data backup mechanisms
+### High Priority
+1. **Media Type Detection**
+   - [ ] Create media type detection algorithm
+   - [ ] Implement type-specific ROI adjustments
+   - [ ] Add media-specific text extraction rules
+
+2. **User Experience**
+   - [ ] Add processing progress indicators
+   - [ ] Implement proper error handling
+   - [ ] Create status messages system
+   - [ ] Add basic settings panel
+
+3. **Data Storage**
+   - [ ] Set up SQLite database
+   - [ ] Create data models for media items
+   - [ ] Implement basic CRUD operations
+   - [ ] Add session history tracking
+
+### Secondary Goals
+1. **Barcode Integration**
+   - [ ] Research barcode libraries
+   - [ ] Implement basic barcode detection
+   - [ ] Add UPC lookup functionality
+
+2. **External APIs**
+   - [ ] Set up TMDB API integration
+   - [ ] Add Discogs API support
+   - [ ] Implement metadata enrichment
+
+3. **Testing & Documentation**
+   - [ ] Create basic test suite
+   - [ ] Add docstrings to all modules
+   - [ ] Create user guide
+   - [ ] Document API endpoints
+
+## Next Major Milestone: Alpha Release
+Target Date: End of Q2 2025
+
+### Required Features
+1. Media type detection
+2. Basic metadata extraction
+3. Local database storage
+4. Progress indicators
+5. Error handling
+6. Basic settings UI
+
+### Success Criteria
+- Successfully process all major media types
+- Store and retrieve processing history
+- Maintain 80% OCR accuracy
+- Handle errors gracefully
+- Provide clear user feedback

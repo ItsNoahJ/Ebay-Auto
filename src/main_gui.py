@@ -16,6 +16,10 @@ def setup_logging():
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 
+def run():
+    """Run the GUI application."""
+    return main()
+
 def main():
     """Main entry point."""
     try:

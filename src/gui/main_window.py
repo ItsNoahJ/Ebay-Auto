@@ -6,23 +6,27 @@ import sys
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, pyqtSlot
-from PyQt6.QtGui import QAction, QIcon
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QApplication,
     QFileDialog,
     QHBoxLayout,
     QMainWindow,
     QMessageBox,
+    QPushButton,
     QStatusBar,
     QToolBar,
     QVBoxLayout,
     QWidget,
+    QLabel,
+    QProgressBar
 )
 
 from ..config.settings import GUI_SETTINGS
 from ..models.coordinator import ProcessingCoordinator
-from .camera_preview import CameraPreview
+from .image_preview import ImagePreview
 from .results_view import ResultsView
+from .settings_dialog import SettingsDialog
 
 class MainWindow(QMainWindow):
     """Main application window."""
@@ -36,9 +40,19 @@ class MainWindow(QMainWindow):
         # Initialize state
         self.coordinator = ProcessingCoordinator()
         self.current_image = None
+        self.settings = {
+            "general": {
+                "debug_enabled": True,
+                "auto_save": False
+            },
+            "camera": {
+                "enabled": False,
+                "device_id": 0
+            }
+        }
         
         # Configure window
-        self.setWindowTitle("VHS Tape Processor")
+        self.setWindowTitle("VHS Tape Scanner")
         self.resize(
             GUI_SETTINGS["window_width"],
             GUI_SETTINGS["window_height"]
@@ -63,31 +77,23 @@ class MainWindow(QMainWindow):
         self.save_action.triggered.connect(self._save_results)
         self.save_action.setEnabled(False)
         
+        self.settings_action = QAction("Se&ttings...", self)
+        self.settings_action.triggered.connect(self._show_settings)
+        
         self.exit_action = QAction("E&xit", self)
         self.exit_action.setShortcut("Ctrl+Q")
         self.exit_action.triggered.connect(self.close)
         
-        # Camera actions
-        self.start_preview_action = QAction("Start Preview", self)
-        self.start_preview_action.triggered.connect(
-            self._start_camera_preview
-        )
-        
-        self.stop_preview_action = QAction("Stop Preview", self)
-        self.stop_preview_action.triggered.connect(
-            self._stop_camera_preview
-        )
-        self.stop_preview_action.setEnabled(False)
-        
-        self.capture_action = QAction("Capture Image", self)
-        self.capture_action.setShortcut("Ctrl+Space")
-        self.capture_action.triggered.connect(self._capture_image)
-        self.capture_action.setEnabled(False)
-        
-        # Process actions
-        self.process_action = QAction("Process Image", self)
+        # Process action
+        self.process_action = QAction("Process", self)
+        self.process_action.setShortcut("Ctrl+P")
         self.process_action.triggered.connect(self._process_image)
         self.process_action.setEnabled(False)
+        
+        # Clear action
+        self.clear_action = QAction("Clear", self)
+        self.clear_action.triggered.connect(self._clear)
+        self.clear_action.setEnabled(False)
         
     def _create_menu(self):
         """Create menu bar."""
@@ -96,13 +102,13 @@ class MainWindow(QMainWindow):
         file_menu.addAction(self.open_action)
         file_menu.addAction(self.save_action)
         file_menu.addSeparator()
+        file_menu.addAction(self.settings_action)
+        file_menu.addSeparator()
         file_menu.addAction(self.exit_action)
         
-        # Camera menu
-        camera_menu = self.menuBar().addMenu("&Camera")
-        camera_menu.addAction(self.start_preview_action)
-        camera_menu.addAction(self.stop_preview_action)
-        camera_menu.addAction(self.capture_action)
+        # Edit menu
+        edit_menu = self.menuBar().addMenu("&Edit")
+        edit_menu.addAction(self.clear_action)
         
         # Process menu
         process_menu = self.menuBar().addMenu("&Process")
@@ -116,15 +122,18 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.open_action)
         toolbar.addAction(self.save_action)
         toolbar.addSeparator()
-        toolbar.addAction(self.start_preview_action)
-        toolbar.addAction(self.stop_preview_action)
-        toolbar.addAction(self.capture_action)
-        toolbar.addSeparator()
         toolbar.addAction(self.process_action)
+        toolbar.addAction(self.clear_action)
         
     def _create_statusbar(self):
         """Create status bar."""
         self.statusBar().showMessage("Ready")
+        
+        # Add progress bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setFixedWidth(150)
+        self.progress_bar.hide()
+        self.statusBar().addPermanentWidget(self.progress_bar)
         
     def _create_widgets(self):
         """Create widgets."""
@@ -136,20 +145,26 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(central)
         
         # Create preview widget
-        preview_layout = QVBoxLayout()
-        self.preview = CameraPreview()
-        preview_layout.addWidget(self.preview)
-        layout.addLayout(preview_layout)
+        self.preview = ImagePreview()
+        layout.addWidget(self.preview, stretch=1)
         
         # Create results widget
         results_layout = QVBoxLayout()
         self.results = ResultsView()
         results_layout.addWidget(self.results)
-        layout.addLayout(results_layout)
+        layout.addLayout(results_layout, stretch=1)
         
         # Connect signals
-        self.preview.image_captured.connect(self._on_image_captured)
+        self.preview.image_loaded.connect(self._on_image_loaded)
         
+    def _show_settings(self):
+        """Show settings dialog."""
+        dialog = SettingsDialog(self)
+        dialog.apply_settings(self.settings)
+        
+        if dialog.exec():
+            self.settings = dialog.get_settings()
+            
     @pyqtSlot()
     def _open_image(self):
         """Open image file."""
@@ -162,9 +177,14 @@ class MainWindow(QMainWindow):
         )
         
         if image_path:
-            self.current_image = image_path
             self.preview.load_image(image_path)
-            self.process_action.setEnabled(True)
+            
+    @pyqtSlot(str)
+    def _on_image_loaded(self, image_path: str):
+        """Handle loaded image."""
+        self.current_image = image_path
+        self.process_action.setEnabled(True)
+        self.clear_action.setEnabled(True)
             
     @pyqtSlot()
     def _save_results(self):
@@ -192,40 +212,15 @@ class MainWindow(QMainWindow):
                 )
                 
     @pyqtSlot()
-    def _start_camera_preview(self):
-        """Start camera preview."""
-        if self.preview.start_preview():
-            self.start_preview_action.setEnabled(False)
-            self.stop_preview_action.setEnabled(True)
-            self.capture_action.setEnabled(True)
-            self.statusBar().showMessage("Camera preview started")
-        else:
-            QMessageBox.critical(
-                self,
-                "Error",
-                "Failed to start camera preview"
-            )
-            
-    @pyqtSlot()
-    def _stop_camera_preview(self):
-        """Stop camera preview."""
-        self.preview.stop_preview()
-        self.start_preview_action.setEnabled(True)
-        self.stop_preview_action.setEnabled(False)
-        self.capture_action.setEnabled(False)
-        self.statusBar().showMessage("Camera preview stopped")
-        
-    @pyqtSlot()
-    def _capture_image(self):
-        """Capture camera image."""
-        self.preview.capture_image()
-        
-    @pyqtSlot(str)
-    def _on_image_captured(self, image_path: str):
-        """Handle captured image."""
-        self.current_image = image_path
-        self.process_action.setEnabled(True)
-        self.statusBar().showMessage(f"Image captured: {image_path}")
+    def _clear(self):
+        """Clear current image and results."""
+        self.current_image = None
+        self.preview.clear()
+        self.results.clear()
+        self.process_action.setEnabled(False)
+        self.clear_action.setEnabled(False)
+        self.save_action.setEnabled(False)
+        self.statusBar().showMessage("Ready")
         
     @pyqtSlot()
     def _process_image(self):
@@ -234,17 +229,36 @@ class MainWindow(QMainWindow):
             return
             
         try:
+            # Show progress
+            self.progress_bar.setRange(0, 0)
+            self.progress_bar.show()
+            self.statusBar().showMessage("Processing...")
+            
             # Process image
             results = self.coordinator.process_tape(
                 self.current_image,
-                debug=True
+                debug=self.settings["general"]["debug_enabled"]
             )
             
             if results["success"]:
                 # Update results view
                 self.results.update_results(results)
                 self.save_action.setEnabled(True)
-                self.statusBar().showMessage("Processing complete")
+                
+                # Auto-save if enabled
+                if self.settings["general"]["auto_save"]:
+                    results_dir = Path("storage/results")
+                    results_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    timestamp = results["timestamp"].strftime("%Y%m%d_%H%M%S")
+                    json_path = results_dir / f"vhs_data_{timestamp}.json"
+                    
+                    self.results.save_results(str(json_path))
+                    self.statusBar().showMessage(
+                        f"Results auto-saved to: {json_path}"
+                    )
+                else:
+                    self.statusBar().showMessage("Processing complete")
             else:
                 raise RuntimeError(results["error"])
                 
@@ -256,7 +270,10 @@ class MainWindow(QMainWindow):
                 f"Processing failed: {e}"
             )
             
+        finally:
+            # Hide progress
+            self.progress_bar.hide()
+            
     def closeEvent(self, event):
         """Handle window close."""
-        self._stop_camera_preview()
         event.accept()
