@@ -1,77 +1,34 @@
-# Project Context
-
-## Overview
-The Media Processor is a specialized application designed to streamline the process of creating eBay listings for physical media (VHS tapes, DVDs, CDs, vinyl records, cassette tapes). It uses advanced image processing and OCR to extract key information from media covers and labels.
+# VHS Auto-Scanning Project Status
 
 ## Current Status
 
-### Core Features Implemented
-1. **Image Processing Pipeline**
-   - Advanced VisionProcessor with multi-stage processing
-   - Ollama Vision integration for text extraction
-   - Region of Interest (ROI) detection for different media regions
-   - Debug image output for regions
+The project is a VHS scanning system that uses computer vision and OCR to extract information from VHS covers.
 
-2. **Basic GUI Framework**
-   - Modern Flet-based interface
-   - File selection and preview
-   - Basic image processing workflow
-   - Results display
+### Recent Improvements (Feb 20, 2025)
+- Enhanced OCR reliability using LM Studio vision model
+- Fixed issues with hallucinated text/numbers
+- Added strict VHS-cover-only detection
+- Added debug logging for image processing
+- Set up .gitignore to keep repository clean
 
-### Critical Gaps
-1. **eBay Integration**
-   - No API connection to eBay
-   - Missing listing creation functionality
-   - No template management for different media types
+### Core Components
+- Vision System (src/vision/):
+  - Uses LM Studio for OCR
+  - Handles title, year, and runtime extraction
+  - Includes debug image output
+  - Conservative detection to prevent false positives
 
-2. **Media Processing**
-   - OCR challenges with VHS covers:
-     - Low confidence in text detection
-     - Issues with complex backgrounds
-     - Struggles with varying text styles
-   - No media type detection
-   - Missing barcode/UPC scanning
-   - No metadata enrichment from external APIs
+- Configuration:
+  - Environment variables (.env)
+  - Media features (config/media_features.json)
+  - Debug output saved to debug_output/
+  - Results stored in storage/
 
-3. **User Experience**
-   - Basic error handling
-   - No progress indicators
-   - Limited feedback during processing
-   - No batch processing capability
-   - No settings/configuration UI
+## Current Focus
+- Improving OCR accuracy and reliability
+- Preventing false detections
+- Better error handling
+- Debug logging for troubleshooting
 
-4. **Data Management**
-   - No local database integration
-   - No history/tracking of processed items
-   - No export functionality
-   - No backup/restore features
-
-## Technical Progress
-1. **Vision Processing Improvements**
-   - Implemented Ollama Vision integration:
-     - Local LLM-based text extraction using MiniCPM-o-2_6
-     - Optimized region-specific prompting
-     - Smart confidence estimation for each region type
-     - Debug image output for visual verification
-   - Simplified image processing pipeline
-   - Created comprehensive testing framework
-   - See detailed analysis in ocr_challenges.md
-
-2. **Next Steps**
-   - Fine-tune region coordinates for optimal text capture
-   - Optimize prompts for better response accuracy
-   - Add response validation and error handling
-   - Integrate vision processor with main pipeline
-   - Add automated model verification and fallback options
-
-3. **Code Organization**
-   - Incomplete documentation
-   - Limited test coverage
-   - Missing type hints in some modules
-   - No logging system
-
-2. **Development Infrastructure**
-   - No CI/CD pipeline
-   - Limited automated testing
-   - No performance benchmarks
-   - Inconsistent error handling
+## Next Steps
+See roadmap.md for detailed next steps and feature plans.

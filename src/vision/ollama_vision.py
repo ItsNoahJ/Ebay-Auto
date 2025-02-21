@@ -6,6 +6,7 @@ import numpy as np
 import json
 import base64
 import requests
+import math
 from typing import Dict, Optional, List, Tuple
 from datetime import datetime
 
@@ -19,7 +20,7 @@ class VHSVision:
         self,
         model: str = "lmstudio-community/minicpm-o-2_6",
         host: str = "http://127.0.0.1:1234",
-        target_size: int = 768,
+        target_pixel_count: int = 307200,  # Equivalent to 640x480
         save_debug: bool = True
     ):
         # Verify LM Studio is running
@@ -39,34 +40,110 @@ class VHSVision:
         Args:
             model: Name of vision-language model
             host: Ollama API host address
-            target_size: Target size for image resizing (preserves aspect ratio)
+            target_pixel_count: Target total pixels (adapts to input resolution)
             save_debug: Whether to save debug images
         """
         self.model = model
         self.host = host.rstrip('/')
-        self.target_size = target_size
+        self.target_pixel_count = target_pixel_count
         self.save_debug = save_debug
-    
-    def resize_image(self, image: np.ndarray) -> np.ndarray:
-        """Resize image while preserving aspect ratio."""
-        h, w = image.shape[:2]
-        if h > w:
-            new_h = self.target_size
-            new_w = int(w * (self.target_size / h))
-        else:
-            new_w = self.target_size
-            new_h = int(h * (self.target_size / w))
+        self.target_encoded_size = 170000  # Target size in bytes for 2048 tokens
+
+    def _calculate_target_size(self, h: int, w: int) -> Tuple[int, int]:
+        """Calculate adaptive target size based on input resolution."""
+        pixel_count = h * w
         
-        resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
-        print(f"\nDebug: Resized image shape: {resized.shape}")
-        return resized
+        if pixel_count <= self.target_pixel_count:
+            # For small images, maintain original dimensions
+            return h, w
+            
+        # For larger images, scale down proportionally
+        scale = math.sqrt(self.target_pixel_count / pixel_count)
+        new_h = int(h * scale)
+        new_w = int(w * scale)
+        
+        return new_h, new_w
+
+    def _calculate_jpeg_quality(self, test_size: int) -> int:
+        """Calculate adaptive JPEG quality to target specific encoded size."""
+        if test_size <= self.target_encoded_size:
+            return 95  # High quality for small images
+            
+        # Scale quality based on how much we need to reduce size
+        quality = int(95 * (self.target_encoded_size / test_size))
+        # Ensure quality stays in reasonable bounds
+        return max(65, min(95, quality))
+    
+    def preprocess_image(self, image: np.ndarray) -> np.ndarray:
+        """Enhanced image preprocessing with adaptive sizing."""
+        # Convert to grayscale if not already
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image
+
+        # Calculate adaptive target size
+        h, w = gray.shape[:2]
+        new_h, new_w = self._calculate_target_size(h, w)
+        
+        # Resize if needed
+        if new_h != h or new_w != w:
+            resized = cv2.resize(gray, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+        else:
+            resized = gray
+        
+        # Enhance contrast using CLAHE with optimized parameters
+        clahe = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(4,4))
+        contrast_enhanced = clahe.apply(resized)
+        
+        # Denoise
+        denoised = cv2.fastNlMeansDenoising(contrast_enhanced)
+        
+        # Apply morphological operations to help with cursive text
+        # Small kernel to preserve detail while connecting strokes
+        kernel = np.ones((2,2), np.uint8)
+        dilated = cv2.dilate(denoised, kernel, iterations=1)
+        eroded = cv2.erode(dilated, kernel, iterations=1)
+        
+        # Sharpen the result
+        sharpen_kernel = np.array([[-1,-1,-1],
+                                 [-1, 9,-1],
+                                 [-1,-1,-1]])
+        sharpened = cv2.filter2D(eroded, -1, sharpen_kernel)
+        
+        # Convert back to BGR for model input
+        processed = cv2.cvtColor(sharpened, cv2.COLOR_GRAY2BGR)
+        
+        # Save intermediate processing steps for debugging
+        if self.save_debug:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            cv2.imwrite(f'debug_output/dilated_{timestamp}.jpg', dilated)
+            cv2.imwrite(f'debug_output/eroded_{timestamp}.jpg', eroded)
+        
+        print(f"\nDebug: Processed image shape: {processed.shape}")
+        return processed
     
     def encode_image(self, image: np.ndarray) -> str:
-        """Convert OpenCV image to base64 string."""
-        success, buffer = cv2.imencode('.jpg', image)
+        """Convert OpenCV image to base64 string with adaptive quality."""
+        # First try with high quality to assess size
+        encode_params = [int(cv2.IMWRITE_JPEG_QUALITY), 95]
+        success, buffer = cv2.imencode('.jpg', image, encode_params)
         if not success:
             raise ValueError("Failed to encode image")
+            
+        # Calculate adaptive quality if needed
         encoded = base64.b64encode(buffer).decode('utf-8')
+        initial_size = len(encoded)
+        
+        if initial_size > self.target_encoded_size:
+            # Recalculate quality and re-encode
+            quality = self._calculate_jpeg_quality(initial_size)
+            encode_params = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
+            success, buffer = cv2.imencode('.jpg', image, encode_params)
+            if not success:
+                raise ValueError("Failed to re-encode image")
+            encoded = base64.b64encode(buffer).decode('utf-8')
+            
         print(f"Debug: Encoded image size: {len(encoded)} bytes")
         print(f"Debug: First 50 chars of encoded image: {encoded[:50]}...")
         return encoded
@@ -94,14 +171,28 @@ class VHSVision:
         Returns:
             dict containing extracted info, confidence score, and method used
         """
-        # Resize image for better processing
-        processed_image = self.resize_image(image)
+        # Enhanced preprocessing
+        processed_image = self.preprocess_image(image)
         self.save_debug_image(processed_image, info_type)
         
         # Natural language prompts for each info type
         if info_type == "title":
-            system = "You are an OCR system. Your task is to literally read and transcribe the largest text that appears to be a movie title on this VHS cover. Do not use any external knowledge about movies - only read what is actually printed."
-            prompt = "What text appears to be the movie title on this VHS cover? Return ONLY the text as it appears, with no interpretation or assumptions. If you cannot read the text clearly, say 'Unable to read text clearly'."
+            system = """You are an OCR system specialized in reading VHS cover text with extremely high accuracy, particularly with cursive fonts. Your task is to:
+1. Carefully examine each character in the title text, especially in cursive sections
+2. Pay special attention to:
+   - Connected letters in cursive writing
+   - Similar-looking character pairs (e.g., 'Th' vs 'Un', 'n' vs 'r')
+   - How letters flow into each other in cursive text
+3. Use the context of the entire title to verify each word
+4. For cursive text, trace the continuous flow of the writing
+5. Only transcribe text that you can read with absolute certainty
+
+Do not use any external knowledge about movies - only read what is actually printed."""
+            prompt = """Look at the movie title on this VHS cover. Read each character individually and carefully.
+If you're unsure about ANY character, mark it with a '?' (e.g., "The ?ndertaker")
+Return ONLY the text as it appears.
+If you cannot read the text clearly, say 'Unable to read text clearly'.
+Consider: 'Th' might be 'Un', 'n' might be 'r', etc."""
         elif info_type == "year":
             system = "You are an OCR system. Your task is to find and read ONLY clearly visible 4-digit numbers that are definitely printed on THIS VHS cover - ignore any other objects, books, or items in the image. Only report numbers from the VHS cover itself."
             prompt = "Look ONLY at the VHS cover (not books or other items) for any clearly visible 4-digit numbers. If you see a number ON THE VHS COVER ITSELF with 100% certainty, return ONLY that number. Otherwise say 'No year visible'. Only report text from the VHS cover."
@@ -130,7 +221,7 @@ class VHSVision:
                         {
                             "type": "image_url",
                             "image_url": {
-                                "url": f"data:image/jpeg;base64,{self.encode_image(image)}"
+                                "url": f"data:image/jpeg;base64,{self.encode_image(processed_image)}"
                             }
                         }
                     ]
@@ -215,10 +306,17 @@ class VHSVision:
         text = text.split('\n')[0].strip()
         
         if info_type == "title":
+            # Take first line as main title, ignoring subtitles and additional text
+            text = text.split('\n')[0].strip()
             # Remove any qualifying statements
             text = text.split(', which')[0].strip()
             text = text.split(' - ')[0].strip()
             text = text.split(' (')[0].strip()
+            # Clean any "Presenting" or similar prefixes
+            prefixes_to_remove = ['Presenting ', 'A Film By ', 'RLJ Entertainment Presents ']
+            for prefix in prefixes_to_remove:
+                if text.startswith(prefix):
+                    text = text[len(prefix):].strip()
         
         elif info_type == "runtime":
             # Extract just the numbers and "min"
@@ -278,11 +376,13 @@ class VHSVision:
             valid_chars = lambda c: c.isascii() and (c.isalpha() or c in ' :!-.')
             valid_ratio = sum(valid_chars(c) for c in text) / len(text) if text else 0
             
-            if (len(text) >= 2 and len(text) <= 100 and  # Reasonable length
+            min_word_length = 2
+            if (len(text) >= min_word_length and len(text) <= 100 and  # Reasonable length
                 valid_ratio > 0.8 and                     # Mostly valid characters
-                ' ' in text and                          # Contains spaces
                 not any(c.isdigit() for c in text)):     # No digits in title
-                confidence += 70.0
+                confidence += 50.0  # Base boost for valid text
+                if ' ' in text:  # Extra boost for multi-word titles
+                    confidence += 20.0  # Total possible: 70.0 (50.0 + 20.0)
         
         return min(max(confidence, 0.0), 100.0)
     
