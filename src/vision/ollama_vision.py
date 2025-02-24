@@ -381,8 +381,10 @@ Consider: 'Th' might be 'Un', 'n' might be 'r', etc."""
                 valid_ratio > 0.8 and                     # Mostly valid characters
                 not any(c.isdigit() for c in text)):     # No digits in title
                 confidence += 50.0  # Base boost for valid text
-                if ' ' in text:  # Extra boost for multi-word titles
-                    confidence += 20.0  # Total possible: 70.0 (50.0 + 20.0)
+                if ' ' in text:
+                    confidence += 20.0  # Extra boost for multi-word titles
+                if len(text) >= 4:  # Common for movie titles
+                    confidence += 20.0
         
         return min(max(confidence, 0.0), 100.0)
     
