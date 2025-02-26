@@ -89,9 +89,29 @@ else:
 
 # GUI Settings
 GUI_SETTINGS = {
-    "preview_scale": 0.5,  # Scale factor for preview images
-    "max_preview_width": 800,
-    "max_preview_height": 600
+    "window_title": "VHS Scanner",  # Window title
+    "window_width": 1200,          # Default window width
+    "window_height": 800,          # Default window height
+    "preview_scale": 0.5,          # Scale factor for preview images
+    "max_preview_width": 800,      # Maximum width for preview images
+    "max_preview_height": 600,     # Maximum height for preview images
+    "min_preview_width": 400,      # Minimum width for preview panel
+    "min_results_width": 400,      # Minimum width for results panel
+    "spacing": 10,                 # Layout spacing
+    "margin": 10,                  # Layout margin
+    "theme": "dark",               # Default theme (dark/light)
+    "themes": {
+        "dark": {
+            "background": "#2b2b2b",
+            "foreground": "#ffffff",
+            "accent": "#007acc"
+        },
+        "light": {
+            "background": "#ffffff",
+            "foreground": "#000000",
+            "accent": "#0066b3"
+        }
+    }
 }
 
 # Vision Processing Settings
@@ -127,6 +147,18 @@ CACHE_EXPIRE_AFTER = 3600  # 1 hour
 # Processing Settings
 OCR_CONFIDENCE_THRESHOLD = 60  # Minimum confidence score for OCR results
 MAX_IMAGE_SIZE = 4000  # Maximum dimension for processed images
+
+# Camera Settings
+CAMERA_SETTINGS = {
+    "device_id": 0,          # Default camera device
+    "frame_width": 1280,     # HD resolution width
+    "frame_height": 720,     # HD resolution height
+    "fps": 30,              # Frame rate
+    "auto_focus": True,      # Enable auto focus
+    "exposure": -3,          # Slightly darker for better text contrast
+    "brightness": 100,       # Default brightness
+    "contrast": 100         # Default contrast
+}
 
 # Debug Settings
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'

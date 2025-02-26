@@ -5,7 +5,7 @@ import logging
 import sys
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, pyqtSlot
+from PyQt6.QtCore import pyqtSlot
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QApplication,
@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QStatusBar,
     QToolBar,
     QVBoxLayout,
@@ -27,6 +28,7 @@ from ..models.coordinator import ProcessingCoordinator
 from .image_preview import ImagePreview
 from .results_view import ResultsView
 from .settings_dialog import SettingsDialog
+from .widgets import ConnectionStatusWidget
 
 class MainWindow(QMainWindow):
     """Main application window."""
@@ -129,11 +131,18 @@ class MainWindow(QMainWindow):
         """Create status bar."""
         self.statusBar().showMessage("Ready")
         
+        # Add LM Studio status
+        self.lm_status = ConnectionStatusWidget()
+        self.statusBar().addPermanentWidget(self.lm_status)
+        
         # Add progress bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setFixedWidth(150)
         self.progress_bar.hide()
         self.statusBar().addPermanentWidget(self.progress_bar)
+        
+        # Connect status signals
+        self.lm_status.status_changed.connect(self._on_lm_status_changed)
         
     def _create_widgets(self):
         """Create widgets."""
@@ -143,16 +152,26 @@ class MainWindow(QMainWindow):
         
         # Create layout
         layout = QHBoxLayout(central)
+        layout.setSpacing(10)  # Add space between widgets
+        layout.setContentsMargins(10, 10, 10, 10)  # Add margins around edges
         
         # Create preview widget
         self.preview = ImagePreview()
+        self.preview.setMinimumWidth(GUI_SETTINGS["min_preview_width"])
+        self.preview.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding
+        )
         layout.addWidget(self.preview, stretch=1)
         
         # Create results widget
-        results_layout = QVBoxLayout()
         self.results = ResultsView()
-        results_layout.addWidget(self.results)
-        layout.addLayout(results_layout, stretch=1)
+        self.results.setMinimumWidth(GUI_SETTINGS["min_results_width"])
+        self.results.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding
+        )
+        layout.addWidget(self.results, stretch=1)
         
         # Connect signals
         self.preview.image_loaded.connect(self._on_image_loaded)
@@ -240,27 +259,24 @@ class MainWindow(QMainWindow):
                 debug=self.settings["general"]["debug_enabled"]
             )
             
-            if results["success"]:
-                # Update results view
-                self.results.update_results(results)
-                self.save_action.setEnabled(True)
+            # Update results view
+            self.results.update_results(results)
+            self.save_action.setEnabled(True)
+            
+            # Auto-save if enabled
+            if self.settings["general"]["auto_save"]:
+                results_dir = Path("storage/results")
+                results_dir.mkdir(parents=True, exist_ok=True)
                 
-                # Auto-save if enabled
-                if self.settings["general"]["auto_save"]:
-                    results_dir = Path("storage/results")
-                    results_dir.mkdir(parents=True, exist_ok=True)
-                    
-                    timestamp = results["timestamp"].strftime("%Y%m%d_%H%M%S")
-                    json_path = results_dir / f"vhs_data_{timestamp}.json"
-                    
-                    self.results.save_results(str(json_path))
-                    self.statusBar().showMessage(
-                        f"Results auto-saved to: {json_path}"
-                    )
-                else:
-                    self.statusBar().showMessage("Processing complete")
+                timestamp = results["debug_info"]["timestamp"]
+                json_path = results_dir / f"vhs_data_{timestamp}.json"
+                
+                self.results.save_results(str(json_path))
+                self.statusBar().showMessage(
+                    f"Results auto-saved to: {json_path}"
+                )
             else:
-                raise RuntimeError(results["error"])
+                self.statusBar().showMessage("Processing complete")
                 
         except Exception as e:
             self.logger.exception("Processing error")
@@ -274,6 +290,16 @@ class MainWindow(QMainWindow):
             # Hide progress
             self.progress_bar.hide()
             
+    @pyqtSlot(str)
+    def _on_lm_status_changed(self, status: str):
+        """Handle LM Studio status changes."""
+        # Enable/disable process button based on connection
+        self.process_action.setEnabled(
+            status == "connected" and self.current_image is not None
+        )
+        
     def closeEvent(self, event):
         """Handle window close."""
+        # Stop connection check timer
+        self.lm_status.timer.stop()
         event.accept()

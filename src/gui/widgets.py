@@ -1,199 +1,89 @@
 """
-Custom GUI widgets.
+Custom widgets for the GUI.
 """
-import cv2
-import numpy as np
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QImage, QPixmap
-from PyQt5.QtWidgets import (
-    QWidget,
-    QLabel,
-    QPushButton,
-    QVBoxLayout,
-    QHBoxLayout,
-    QSizePolicy,
-    QFrame
-)
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel
+from PyQt6.QtGui import QColor
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+import requests
 
-class CameraPreviewWidget(QWidget):
-    """Camera preview widget."""
+class ConnectionStatusWidget(QWidget):
+    """Widget showing LM Studio connection status."""
     
-    capture_signal = pyqtSignal()
+    status_changed = pyqtSignal(str)  # Emits status changes
     
     def __init__(self, parent=None):
         """Initialize widget."""
         super().__init__(parent)
         
         # Create layout
-        layout = QVBoxLayout()
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(5, 0, 5, 0)
         
-        # Create preview label
-        self.preview = QLabel()
-        self.preview.setAlignment(Qt.AlignCenter)
-        self.preview.setSizePolicy(
-            QSizePolicy.Expanding,
-            QSizePolicy.Expanding
+        # Create indicator
+        self.status_indicator = QLabel()
+        self.status_indicator.setFixedSize(12, 12)
+        self.status_indicator.setStyleSheet(
+            "QLabel { border-radius: 6px; background-color: red; }"
         )
-        layout.addWidget(self.preview)
+        layout.addWidget(self.status_indicator)
         
-        # Create capture button
-        self.capture_button = QPushButton("Capture")
-        self.capture_button.clicked.connect(self.capture_signal.emit)
-        layout.addWidget(self.capture_button)
+        # Create label
+        self.status_label = QLabel("LM Studio: Disconnected")
+        layout.addWidget(self.status_label)
         
-        self.setLayout(layout)
+        # Start update timer
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.check_connection)
+        self.timer.start(5000)  # Check every 5 seconds
         
-    def update_preview(self, frame: np.ndarray):
-        """
-        Update preview image.
+        # Initial check
+        self.check_connection()
         
-        Args:
-            frame: Image frame
-        """
-        if frame is None:
-            return
+    def check_connection(self):
+        """Check LM Studio connection status."""
+        try:
+            # Try to connect to LM Studio
+            response = requests.get("http://127.0.0.1:1234/v1/models", timeout=2)
             
-        # Convert frame
-        height, width = frame.shape[:2]
-        bytes_per_line = 3 * width
-        
-        image = QImage(
-            frame.data,
-            width,
-            height,
-            bytes_per_line,
-            QImage.Format_RGB888
-        ).rgbSwapped()
-        
-        # Scale to fit
-        pixmap = QPixmap.fromImage(image)
-        scaled = pixmap.scaled(
-            self.preview.size(),
-            Qt.KeepAspectRatio,
-            Qt.SmoothTransformation
+            if response.status_code == 200:
+                # Check if model is loaded by attempting a simple completion
+                try:
+                    test_response = requests.post(
+                        "http://127.0.0.1:1234/v1/chat/completions",
+                        json={
+                            "model": "lmstudio-community/minicpm-o-2_6",
+                            "messages": [{"role": "user", "content": "test"}],
+                            "max_tokens": 1
+                        },
+                        timeout=5
+                    )
+                    
+                    if test_response.status_code == 200:
+                        self._update_status("connected")
+                    else:
+                        self._update_status("no_model")
+                except requests.RequestException:
+                    self._update_status("no_model")
+            else:
+                self._update_status("disconnected")
+                
+        except requests.RequestException:
+            self._update_status("disconnected")
+            
+    def _update_status(self, status: str):
+        """Update status indicator."""
+        if status == "connected":
+            color = QColor(0, 255, 0)  # Green
+            text = "LM Studio: Connected"
+        elif status == "no_model":
+            color = QColor(255, 255, 0)  # Yellow
+            text = "LM Studio: No Model"
+        else:
+            color = QColor(255, 0, 0)  # Red
+            text = "LM Studio: Disconnected"
+            
+        self.status_indicator.setStyleSheet(
+            f"QLabel {{ border-radius: 6px; background-color: {color.name()}; }}"
         )
-        
-        self.preview.setPixmap(scaled)
-
-class ResultsWidget(QWidget):
-    """Results display widget."""
-    
-    def __init__(self, parent=None):
-        """Initialize widget."""
-        super().__init__(parent)
-        
-        # Create layout
-        layout = QVBoxLayout()
-        
-        # Create image preview
-        self.image = QLabel()
-        self.image.setAlignment(Qt.AlignCenter)
-        self.image.setSizePolicy(
-            QSizePolicy.Expanding,
-            QSizePolicy.Expanding
-        )
-        layout.addWidget(self.image)
-        
-        # Create info panel
-        info_panel = QFrame()
-        info_panel.setFrameStyle(QFrame.Panel | QFrame.Sunken)
-        
-        info_layout = QVBoxLayout()
-        
-        self.title = QLabel()
-        self.title.setStyleSheet("font-weight: bold; font-size: 14px;")
-        info_layout.addWidget(self.title)
-        
-        self.year = QLabel()
-        info_layout.addWidget(self.year)
-        
-        self.rating = QLabel()
-        info_layout.addWidget(self.rating)
-        
-        self.genres = QLabel()
-        info_layout.addWidget(self.genres)
-        
-        info_panel.setLayout(info_layout)
-        layout.addWidget(info_panel)
-        
-        # Create buttons
-        button_layout = QHBoxLayout()
-        
-        self.save_button = QPushButton("Save Results")
-        button_layout.addWidget(self.save_button)
-        
-        self.clear_button = QPushButton("Clear")
-        button_layout.addWidget(self.clear_button)
-        
-        layout.addLayout(button_layout)
-        
-        self.setLayout(layout)
-        
-    def update_results(self, results: dict):
-        """
-        Update results display.
-        
-        Args:
-            results: Processing results
-        """
-        if not results or not results.get("success"):
-            self.clear()
-            return
-            
-        # Update movie info
-        movie = results["movie_data"]
-        
-        self.title.setText(movie["title"])
-        self.year.setText(f"Year: {movie['release_date'][:4]}")
-        self.rating.setText(f"Rating: {movie.get('vote_average', 'N/A')}")
-        
-        genres = [g["name"] for g in movie.get("genres", [])]
-        self.genres.setText(f"Genres: {', '.join(genres)}")
-        
-        # Update debug image if available
-        if "debug_image" in results:
-            self.set_image(results["debug_image"])
-            
-    def set_image(self, image_path: str):
-        """
-        Set preview image.
-        
-        Args:
-            image_path: Path to image file
-        """
-        # Load image
-        image = cv2.imread(image_path)
-        
-        if image is not None:
-            # Convert to RGB
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            
-            # Create QImage
-            height, width = image.shape[:2]
-            bytes_per_line = 3 * width
-            
-            qimage = QImage(
-                image.data,
-                width,
-                height,
-                bytes_per_line,
-                QImage.Format_RGB888
-            )
-            
-            # Scale to fit
-            pixmap = QPixmap.fromImage(qimage)
-            scaled = pixmap.scaled(
-                self.image.size(),
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation
-            )
-            
-            self.image.setPixmap(scaled)
-            
-    def clear(self):
-        """Clear results display."""
-        self.image.clear()
-        self.title.clear()
-        self.year.clear()
-        self.rating.clear()
-        self.genres.clear()
+        self.status_label.setText(text)
+        self.status_changed.emit(status)

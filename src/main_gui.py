@@ -4,6 +4,7 @@ GUI entry point module.
 import logging
 import sys
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
 from .config.settings import validate_settings
@@ -29,7 +30,9 @@ def main():
         # Validate settings
         validate_settings()
         
-        # Create application
+        # Set Fusion style for consistent look
+        QApplication.setStyle("fusion")
+        
         app = QApplication(sys.argv)
         
         # Create main window

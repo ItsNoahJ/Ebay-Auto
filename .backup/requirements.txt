@@ -1,9 +1,9 @@
 # Core dependencies
+flet>=0.21.0
 numpy>=1.26.0
 opencv-python>=4.8.0
 sqlalchemy>=2.0.0
-requests>=2.31.0  # For LM Studio API calls
-PyQt6>=6.4.0  # GUI framework
+requests>=2.31.0  # For Ollama API calls
 
 # Media processing
 pyzbar>=0.1.9

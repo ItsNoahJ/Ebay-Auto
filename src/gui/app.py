@@ -6,7 +6,7 @@ import cv2
 import time
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict
 
 from PyQt5.QtWidgets import (
     QMainWindow,
@@ -55,10 +55,10 @@ class VHSScannerApp(QMainWindow):
     def setup_ui(self):
         """Setup user interface."""
         # Configure window
-        self.setWindowTitle(GUI_SETTINGS["window_title"])
+        self.setWindowTitle(GUI_SETTINGS.get("window_title", "VHS Scanner"))
         self.resize(
-            GUI_SETTINGS["window_width"],
-            GUI_SETTINGS["window_height"]
+            GUI_SETTINGS.get("window_width", 1200),
+            GUI_SETTINGS.get("window_height", 800)
         )
         
         # Create central widget
@@ -67,18 +67,18 @@ class VHSScannerApp(QMainWindow):
         
         # Create layout
         layout = QHBoxLayout(central)
-        layout.setSpacing(GUI_SETTINGS["spacing"])
+        layout.setSpacing(GUI_SETTINGS.get("spacing", 10))
         layout.setContentsMargins(
-            GUI_SETTINGS["margin"],
-            GUI_SETTINGS["margin"],
-            GUI_SETTINGS["margin"],
-            GUI_SETTINGS["margin"]
+            GUI_SETTINGS.get("margin", 10),
+            GUI_SETTINGS.get("margin", 10),
+            GUI_SETTINGS.get("margin", 10),
+            GUI_SETTINGS.get("margin", 10)
         )
         
         # Create preview section
         preview_section = QWidget()
         preview_layout = QVBoxLayout(preview_section)
-        preview_layout.setSpacing(GUI_SETTINGS["spacing"])
+        preview_layout.setSpacing(GUI_SETTINGS.get("spacing", 10))
         preview_layout.setContentsMargins(0, 0, 0, 0)
         
         # Create camera preview
@@ -101,7 +101,7 @@ class VHSScannerApp(QMainWindow):
         # Create results section
         results_section = QWidget()
         results_layout = QVBoxLayout(results_section)
-        results_layout.setSpacing(GUI_SETTINGS["spacing"])
+        results_layout.setSpacing(GUI_SETTINGS.get("spacing", 10))
         results_layout.setContentsMargins(0, 0, 0, 0)
         
         # Create results view
@@ -126,41 +126,49 @@ class VHSScannerApp(QMainWindow):
         
     def apply_theme(self):
         """Apply GUI theme."""
-        # Get theme colors
-        theme = GUI_SETTINGS["themes"][GUI_SETTINGS["theme"]]
+        # Default theme colors
+        default_theme = {
+            "background": "#2b2b2b",
+            "foreground": "#ffffff",
+            "accent": "#007acc"
+        }
+        
+        # Get theme colors from settings or use defaults
+        theme_name = GUI_SETTINGS.get("theme", "dark")
+        theme = GUI_SETTINGS.get("themes", {}).get(theme_name, default_theme)
         
         # Create stylesheet
         style = f"""
             QMainWindow {{
-                background-color: {theme["background"]};
-                color: {theme["foreground"]};
+                background-color: {theme.get("background", default_theme["background"])};
+                color: {theme.get("foreground", default_theme["foreground"])};
             }}
             
             QWidget {{
-                background-color: {theme["background"]};
-                color: {theme["foreground"]};
+                background-color: {theme.get("background", default_theme["background"])};
+                color: {theme.get("foreground", default_theme["foreground"])};
             }}
             
             QPushButton {{
-                background-color: {theme["accent"]};
-                color: {theme["background"]};
+                background-color: {theme.get("accent", default_theme["accent"])};
+                color: {theme.get("background", default_theme["background"])};
                 border: none;
                 padding: 8px;
                 border-radius: 4px;
             }}
             
             QPushButton:hover {{
-                background-color: {theme["foreground"]};
+                background-color: {theme.get("foreground", default_theme["foreground"])};
             }}
             
             QProgressBar {{
-                border: 2px solid {theme["accent"]};
+                border: 2px solid {theme.get("accent", default_theme["accent"])};
                 border-radius: 4px;
                 text-align: center;
             }}
             
             QProgressBar::chunk {{
-                background-color: {theme["accent"]};
+                background-color: {theme.get("accent", default_theme["accent"])};
             }}
         """
         
@@ -187,12 +195,23 @@ class VHSScannerApp(QMainWindow):
             return True
             
         except Exception as e:
-            self.logger.error(f"Camera connection error: {e}")
+            self.logger.warning(f"Camera connection error: {e}")
+            # Disable camera-related features but allow the app to continue
+            self.capture_button.setEnabled(False)
+            self.capture_button.setToolTip("Camera not available")
             return False
             
     def capture_image(self):
         """Capture image from camera."""
         try:
+            if not self.camera.is_camera_open():
+                QMessageBox.warning(
+                    self,
+                    "Camera Error",
+                    "Camera is not connected or available"
+                )
+                return
+
             # Capture frame
             result = self.camera.capture_frame()
             

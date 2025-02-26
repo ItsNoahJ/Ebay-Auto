@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from ..config.settings import STORAGE_PATHS
-from ..enrichment.api_client import TMDbClient
+from ..enrichment.tmdb_client import TMDBClient
 from ..vision.processor import VisionProcessor
 
 class ProcessingCoordinator:
@@ -21,7 +21,11 @@ class ProcessingCoordinator:
         
         # Initialize components
         self.vision = VisionProcessor()
-        self.api = TMDbClient()
+        try:
+            self.api = TMDBClient()
+        except ValueError as e:
+            self.logger.warning(f"TMDB client disabled: {e}")
+            self.api = None
         
     def _extract_year(self, text: str) -> Optional[str]:
         """
@@ -174,20 +178,16 @@ class ProcessingCoordinator:
         """
         try:
             # Process image
-            results = self.vision.process_image(
-                image_path,
-                debug=debug
-            )
+            results = self.vision.process_image(image_path)
             
-            if not results["success"]:
-                return results
-                
-            # Extract titles
+            # Extract titles from OCR results
             titles = []
             
-            for text in results["texts"]:
+            # Get extracted text
+            title_text = results["extracted_data"]["title"]
+            if title_text:
                 # Split into lines
-                lines = text.splitlines()
+                lines = title_text.splitlines()
                 
                 # Process each line
                 for line in lines:
@@ -219,19 +219,12 @@ class ProcessingCoordinator:
                 year = self._extract_year(title)
                 clean_title = self._clean_title(title)
                 
-                # Search API
-                search_results = self.api.search_movies(clean_title)
-                
-                # Find best match
-                match = self._find_best_match(
-                    clean_title,
-                    year,
-                    search_results
-                )
-                
-                if match:
-                    # Get full details
-                    movie_data = self.api.get_movie(match["id"])
+                # Find movie data if API client is available
+                if self.api:
+                    movie_data = self.api.find_best_match(
+                        title=clean_title,
+                        year=int(year) if year else None
+                    )
                     
                     if movie_data:
                         results["movie_data"] = movie_data

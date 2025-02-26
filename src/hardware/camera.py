@@ -43,39 +43,27 @@ class Camera:
                 raise RuntimeError("Failed to open camera device")
                 
             # Set resolution
-            width = CAMERA_SETTINGS["resolution_width"]
-            height = CAMERA_SETTINGS["resolution_height"]
+            width = CAMERA_SETTINGS["frame_width"]
+            height = CAMERA_SETTINGS["frame_height"]
             
             self.device.set(cv2.CAP_PROP_FRAME_WIDTH, width)
             self.device.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+            self.device.set(cv2.CAP_PROP_FPS, CAMERA_SETTINGS["fps"])
             
             # Set auto focus
             if CAMERA_SETTINGS["auto_focus"]:
-                self.device.set(
-                    cv2.CAP_PROP_AUTOFOCUS,
-                    1
-                )
-                
-            # Set focus value
-            if CAMERA_SETTINGS["focus_value"] is not None:
-                self.device.set(
-                    cv2.CAP_PROP_FOCUS,
-                    CAMERA_SETTINGS["focus_value"]
-                )
-                
-            # Set auto exposure
-            if CAMERA_SETTINGS["auto_exposure"]:
-                self.device.set(
-                    cv2.CAP_PROP_AUTO_EXPOSURE,
-                    1
-                )
-                
-            # Set exposure value
-            if CAMERA_SETTINGS["exposure_value"] is not None:
-                self.device.set(
-                    cv2.CAP_PROP_EXPOSURE,
-                    CAMERA_SETTINGS["exposure_value"]
-                )
+                self.device.set(cv2.CAP_PROP_AUTOFOCUS, 1)
+            
+            # Set exposure
+            if CAMERA_SETTINGS.get("exposure") is not None:
+                self.device.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0)  # Disable auto exposure
+                self.device.set(cv2.CAP_PROP_EXPOSURE, CAMERA_SETTINGS["exposure"])
+            
+            # Set brightness and contrast
+            if CAMERA_SETTINGS.get("brightness") is not None:
+                self.device.set(cv2.CAP_PROP_BRIGHTNESS, CAMERA_SETTINGS["brightness"])
+            if CAMERA_SETTINGS.get("contrast") is not None:
+                self.device.set(cv2.CAP_PROP_CONTRAST, CAMERA_SETTINGS["contrast"])
                 
             # Update state
             self.is_open = True
@@ -121,6 +109,10 @@ class Camera:
             self.logger.exception("Read error")
             return None
             
+    def is_camera_open(self) -> bool:
+        """Check if camera is open and working."""
+        return self.is_open and self.device is not None and self.device.isOpened()
+
     def capture_image(self) -> Optional[str]:
         """
         Capture image.

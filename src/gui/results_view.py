@@ -5,7 +5,7 @@ import json
 import logging
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6 import QtCore
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QLabel,
@@ -40,15 +40,31 @@ class ResultsView(QTabWidget):
         # Create tab
         tab = QWidget()
         layout = QVBoxLayout(tab)
+        layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Create scroll area
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        layout.addWidget(scroll)
+        
+        # Create container widget
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
         
         # Create text area
         self.vision_text = QPlainTextEdit()
         self.vision_text.setReadOnly(True)
         self.vision_text.setPlaceholderText("No image processed yet")
+        self.vision_text.setMinimumHeight(200)
         self.vision_text.setStyleSheet(
             "QPlainTextEdit { background-color: #f8f9fa; padding: 10px; }"
         )
-        layout.addWidget(self.vision_text)
+        container_layout.addWidget(self.vision_text)
+        container_layout.addStretch()
+        
+        scroll.setWidget(container)
         
         # Add tab
         self.addTab(tab, "Vision Data")
@@ -58,15 +74,31 @@ class ResultsView(QTabWidget):
         # Create tab
         tab = QWidget()
         layout = QVBoxLayout(tab)
+        layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Create scroll area
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        layout.addWidget(scroll)
+        
+        # Create container widget
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
         
         # Create text area
         self.text_area = QPlainTextEdit()
         self.text_area.setReadOnly(True)
         self.text_area.setPlaceholderText("No text extracted yet")
+        self.text_area.setMinimumHeight(200)
         self.text_area.setStyleSheet(
             "QPlainTextEdit { background-color: #f8f9fa; padding: 10px; }"
         )
-        layout.addWidget(self.text_area)
+        container_layout.addWidget(self.text_area)
+        container_layout.addStretch()
+        
+        scroll.setWidget(container)
         
         # Add tab
         self.addTab(tab, "Extracted Text")
@@ -76,15 +108,31 @@ class ResultsView(QTabWidget):
         # Create tab
         tab = QWidget()
         layout = QVBoxLayout(tab)
+        layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Create scroll area
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        layout.addWidget(scroll)
+        
+        # Create container widget
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
         
         # Create text area
         self.movie_text = QPlainTextEdit()
         self.movie_text.setReadOnly(True)
         self.movie_text.setPlaceholderText("No movie data found")
+        self.movie_text.setMinimumHeight(200)
         self.movie_text.setStyleSheet(
             "QPlainTextEdit { background-color: #f8f9fa; padding: 10px; }"
         )
-        layout.addWidget(self.movie_text)
+        container_layout.addWidget(self.movie_text)
+        container_layout.addStretch()
+        
+        scroll.setWidget(container)
         
         # Add tab
         self.addTab(tab, "Movie Info")
@@ -109,7 +157,7 @@ class ResultsView(QTabWidget):
         
         # Create image label
         self.debug_image = QLabel("No debug image available")
-        self.debug_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.debug_image.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.debug_image.setStyleSheet(
             "QLabel { color: #6c757d; padding: 20px; }"
         )
@@ -145,27 +193,56 @@ class ResultsView(QTabWidget):
             self.current_results = results
             
             # Update vision data
-            if "vision_data" in results:
-                vision_data = results["vision_data"]
+            if "debug_info" in results:
+                debug_info = results["debug_info"]
                 text = []
                 text.append("📊 Vision Analysis")
                 text.append("-" * 20)
-                text.append(f"📏 Image Size: {vision_data['image_size']}")
-                text.append(f"🔍 Sharpness: {vision_data['sharpness']:.1f}")
-                text.append(f"⬜ Rectangles: {vision_data['rectangles']}")
-                text.append(f"📝 Text Regions: {vision_data['text_regions']}")
-                text.append(f"⏱️ Processing Time: {vision_data['processing_time']:.2f}s")
+                text.append(f"🌄 Original Image: {debug_info['original_image']}")
+                
+                # Add confidence scores
+                text.append("\n🎯 Confidence Scores:")
+                for field, score in debug_info["confidence_scores"].items():
+                    text.append(f"- {field}: {score:.1f}%")
+                
+                # Add any errors
+                if "errors" in debug_info:
+                    text.append("\n⚠️ Issues:")
+                    for field, error in debug_info["errors"].items():
+                        text.append(f"- {field}: {error}")
+                
+                text.append(f"\n⏱️ Timestamp: {debug_info['timestamp']}")
                 self.vision_text.setPlainText("\n".join(text))
             else:
-                self.vision_text.setPlainText("❌ No vision data available")
+                self.vision_text.setPlainText("❌ No debug info available")
             
             # Update extracted text
-            if "extracted_titles" in results and results["extracted_titles"]:
+            if "extracted_data" in results:
                 text = []
-                text.append("📚 Extracted Titles")
+                text.append("📚 Extracted Text")
                 text.append("-" * 20)
-                for title in results["extracted_titles"]:
-                    text.append(f"🎬 {title}")
+                
+                # Display title
+                if results["extracted_data"]["title"]:
+                    text.append("🎬 Title:")
+                    text.append(results["extracted_data"]["title"])
+                    
+                # Display year
+                if results["extracted_data"]["year"]:
+                    text.append("\n📅 Year:")
+                    text.append(results["extracted_data"]["year"])
+                    
+                # Display runtime
+                if results["extracted_data"]["runtime"]:
+                    text.append("\n⏱️ Runtime:")
+                    text.append(results["extracted_data"]["runtime"])
+                
+                # Display cleaned titles if available
+                if "extracted_titles" in results and results["extracted_titles"]:
+                    text.append("\n🔍 Processed Titles:")
+                    for title in results["extracted_titles"]:
+                        text.append(f"- {title}")
+                        
                 self.text_area.setPlainText("\n".join(text))
             else:
                 self.text_area.setPlainText("❌ No text extracted")
@@ -207,8 +284,8 @@ class ResultsView(QTabWidget):
                     # Scale pixmap to fit while maintaining aspect ratio
                     scaled = pixmap.scaled(
                         800, 800,  # Max dimensions
-                        Qt.AspectRatioMode.KeepAspectRatio,
-                        Qt.TransformationMode.SmoothTransformation
+                        QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                        QtCore.Qt.TransformationMode.SmoothTransformation
                     )
                     self.debug_image.setPixmap(scaled)
                     

@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 import cv2
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6 import QtCore
 from PyQt6.QtGui import QImage, QPixmap, QDragEnterEvent, QDropEvent
 from PyQt6.QtWidgets import QLabel, QSizePolicy
 
@@ -15,7 +15,7 @@ class ImagePreview(QLabel):
     """Image preview widget."""
     
     # Signals
-    image_loaded = pyqtSignal(str)
+    image_loaded = QtCore.pyqtSignal(str)
     
     def __init__(self):
         """Initialize widget."""
@@ -28,7 +28,7 @@ class ImagePreview(QLabel):
         self.current_path = None
         
         # Configure widget
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding
@@ -124,8 +124,8 @@ class ImagePreview(QLabel):
             # Scale to fit widget while maintaining aspect ratio
             scaled = pixmap.scaled(
                 self.size(),
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation
             )
             
             # Update label

@@ -18,15 +18,16 @@ class TMDBClient:
     """
     def __init__(self, cache_path: str = "storage/cache/tmdb_cache.sqlite"):
         self.api_key = os.getenv("TMDB_API_KEY")
-        if not self.api_key:
-            raise ValueError("TMDB_API_KEY environment variable is required")
-            
+        self.enabled = bool(self.api_key)
         self.base_url = "https://api.themoviedb.org/3"
         self.cache_path = cache_path
         
-        # Validate API key
-        self._validate_api_key()
+        # Always init cache since it's needed for other operations
         self._init_cache()
+        
+        if self.enabled:
+            # Only validate if we have an API key
+            self._validate_api_key()
         
     def _validate_api_key(self):
         """Validate the API key by making a test request."""
@@ -189,8 +190,11 @@ class TMDBClient:
             year: Optional release year to filter by
             
         Returns:
-            Search results
+            Search results or empty dict if TMDB is disabled
         """
+        if not self.enabled:
+            return {"results": []}
+            
         params = {"query": query}
         if year:
             params["year"] = year
@@ -205,8 +209,11 @@ class TMDBClient:
             movie_id: TMDB movie ID
             
         Returns:
-            Movie details
+            Movie details or empty dict if TMDB is disabled
         """
+        if not self.enabled:
+            return {}
+            
         return self._make_request(f"/movie/{movie_id}")
         
     def find_best_match(
@@ -226,6 +233,9 @@ class TMDBClient:
         Returns:
             Best matching movie or None if no good match found
         """
+        if not self.enabled:
+            return None
+            
         from difflib import SequenceMatcher
         
         # Search for movies
