@@ -30,11 +30,51 @@ def resize_image(image: np.ndarray, width: int = None, height: int = None) -> np
         
     return cv2.resize(image, (width, height))
 
+def apply_adaptive_contrast(
+    image: np.ndarray,
+    clip_limit: float = 3.0,
+    grid_size: Tuple[int, int] = (8, 8),
+    adaptive_method: int = cv2.ADAPTIVE_THRESH_GAUSSIAN_C
+) -> np.ndarray:
+    """
+    Apply adaptive contrast enhancement to image.
+    
+    Args:
+        image: Input grayscale image
+        clip_limit: Threshold for contrast limiting
+        grid_size: Size of grid for histogram equalization
+        adaptive_method: Method for adaptive processing
+        
+    Returns:
+        Enhanced image
+    """
+    # Create CLAHE object
+    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=grid_size)
+    
+    # Apply adaptive equalization
+    enhanced = clahe.apply(image)
+    
+    # Apply adaptive thresholding for improved text contrast
+    mask = cv2.adaptiveThreshold(
+        enhanced,
+        255,
+        adaptive_method,
+        cv2.THRESH_BINARY,
+        11,  # block size
+        2    # C constant
+    )
+    
+    # Combine original and thresholded image
+    result = cv2.addWeighted(enhanced, 0.7, mask, 0.3, 0)
+    
+    return result
+
 def enhance_image(
     image: np.ndarray,
     sharpen: bool = False,
     contrast: bool = True,
-    denoise: bool = True
+    denoise: bool = True,
+    adaptive_contrast: bool = False  # New parameter
 ) -> np.ndarray:
     """
     Enhance image for better OCR with improved preprocessing pipeline.
@@ -44,6 +84,7 @@ def enhance_image(
         sharpen: Apply sharpening
         contrast: Enhance contrast
         denoise: Apply denoising
+        adaptive_contrast: Use adaptive contrast enhancement
         
     Returns:
         Enhanced image
@@ -66,12 +107,14 @@ def enhance_image(
     
     # Enhance contrast
     if contrast:
-        # Normalize histogram
-        gray = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX)
-        
-        # Local contrast enhancement
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
-        gray = clahe.apply(gray)
+        if adaptive_contrast:
+            # Use new adaptive contrast enhancement
+            gray = apply_adaptive_contrast(gray)
+        else:
+            # Use traditional contrast enhancement
+            gray = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX)
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+            gray = clahe.apply(gray)
     
     # Simple sharpening
     if sharpen:

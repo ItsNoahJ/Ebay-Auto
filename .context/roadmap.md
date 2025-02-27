@@ -1,105 +1,31 @@
-# Project Roadmap
+# Development Roadmap
 
-## Current Status
+## Recently Completed
+- ✓ Optimized LM Studio connection management
+  - Replaced continuous polling with manual refresh
+  - Added connection status caching
+  - Improved performance of status checks
+  - Added visual loading indicator
 
-- ✅ Basic GUI implemented with PyQt
-- ✅ Vision processing using LM Studio integration
-- ✅ TMDB movie data lookup
-- ✅ Debug visualization and logging
-- ✅ Results view with confidence scores
-- ✅ Auto-save functionality
+## Current Sprint
+- Fix TMDB integration
+  - Resolve API key validation issues
+  - Add error handling for failed API requests
+  - Implement retry mechanism for temporary failures
+- Improve OCR accuracy
+  - Fine-tune image preprocessing parameters
+  - Add additional debug visualization options
+  - Implement confidence scoring for extracted text
 
-## In Progress
-
-- 🔄 Image preprocessing improvements
-  - [ ] Adaptive contrast enhancement
-  - [ ] Color masking for better text extraction
-  - [ ] Dynamic scaling based on input size
-- 🔄 OCR accuracy enhancements
-  - [ ] Better handling of cursive fonts
-  - [ ] Multiple pass verification
-  - [ ] Context-aware text cleaning
-
-## Next Steps
-
-### Short Term
-1. Add batch processing capability
-   - Multiple image selection
-   - Progress tracking
-   - Bulk export options
-
-2. Enhance error handling
-   - Better error messages
-   - Automatic retry logic
-   - Recovery suggestions
-
-3. Improve UX
-   - Drag-and-drop support
-   - Preview enhancements
-   - Status indicators
-
-### Medium Term
-1. Camera integration
-   - Real-time preview
-   - Auto-capture
-   - Image quality checks
-
-2. Data management
-   - Local database
-   - Search functionality
-   - Export formats (CSV, JSON, XML)
-
-3. Results enhancement
-   - Additional movie metadata
-   - Cover art matching
-   - Genre detection
-
-### Long Term
-1. Integration options
-   - Media server plugins (Plex, Kodi)
-   - Cloud storage sync
-   - API endpoints
-
-2. Advanced features
-   - Barcode scanning
-   - Cover art generation
-   - Machine learning improvements
-
-3. Platform expansion
-   - Web interface
-   - Mobile app
-   - Network scanning
-
-## Technical Debt
-
-1. Test coverage
-   - [ ] Integration tests
-   - [ ] UI tests
-   - [ ] Performance benchmarks
-
-2. Code quality
-   - [ ] Type hints completion
-   - [ ] Documentation updates
-   - [ ] Code organization
-
-3. Dependencies
-   - [ ] Version updates
-   - [ ] Security audit
-   - [ ] Performance optimization
+## Future Improvements
+- Batch processing capability
+- Save/load processing configurations
+- Enhanced metadata extraction
+- Support for different media formats
+- Automated testing improvements
+- Export functionality enhancements
 
 ## Known Issues
-
-1. Vision Processing
-   - Variable accuracy with cursive fonts
-   - Slow processing of large images
-   - Memory usage with batch processing
-
-2. User Interface
-   - Limited keyboard shortcuts
-   - No progress indication for long operations
-   - Settings management needs improvement
-
-3. Integration
-   - LM Studio connection handling
-   - TMDB rate limiting
-   - Error recovery
+- TMDB API key validation failing
+- Some OCR accuracy challenges with certain tape labels
+- Need to improve error handling for network issues

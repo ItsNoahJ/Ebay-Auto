@@ -42,6 +42,7 @@ class MainWindow(QMainWindow):
         # Initialize state
         self.coordinator = ProcessingCoordinator()
         self.current_image = None
+        self.current_status = "disconnected"  # Track LM Studio connection status
         self.settings = {
             "general": {
                 "debug_enabled": True,
@@ -202,7 +203,7 @@ class MainWindow(QMainWindow):
     def _on_image_loaded(self, image_path: str):
         """Handle loaded image."""
         self.current_image = image_path
-        self.process_action.setEnabled(True)
+        self.process_action.setEnabled(self.current_status == "connected")
         self.clear_action.setEnabled(True)
             
     @pyqtSlot()
@@ -244,14 +245,22 @@ class MainWindow(QMainWindow):
     @pyqtSlot()
     def _process_image(self):
         """Process current image."""
-        if not self.current_image:
+        if not self.current_image or self.current_status != "connected":
             return
             
         try:
+            # Start loading animation
+            self.lm_status.start_loading_animation()
+            
             # Show progress
             self.progress_bar.setRange(0, 0)
             self.progress_bar.show()
             self.statusBar().showMessage("Processing...")
+            
+            # Verify we're still connected before processing
+            self.lm_status.check_connection()
+            if self.current_status != "connected":
+                raise Exception("Lost connection to LM Studio")
             
             # Process image
             results = self.coordinator.process_tape(
@@ -287,12 +296,14 @@ class MainWindow(QMainWindow):
             )
             
         finally:
-            # Hide progress
+            # Stop loading animation and hide progress
+            self.lm_status.stop_loading_animation()
             self.progress_bar.hide()
             
     @pyqtSlot(str)
     def _on_lm_status_changed(self, status: str):
         """Handle LM Studio status changes."""
+        self.current_status = status
         # Enable/disable process button based on connection
         self.process_action.setEnabled(
             status == "connected" and self.current_image is not None
@@ -300,6 +311,4 @@ class MainWindow(QMainWindow):
         
     def closeEvent(self, event):
         """Handle window close."""
-        # Stop connection check timer
-        self.lm_status.timer.stop()
         event.accept()
