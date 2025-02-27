@@ -18,30 +18,13 @@ class VHSVision:
     
     def __init__(
         self,
-        model: str = "lmstudio-community/minicpm-o-2_6",
+        model: str = "local-model",  # Use generic model name
         host: str = "http://127.0.0.1:1234",
         target_pixel_count: int = 307200,  # Equivalent to 640x480
         save_debug: bool = True
     ):
-        # Verify LM Studio is running
-        try:
-            response = requests.get(f"{host.rstrip('/')}/v1/models", timeout=5)
-            response.raise_for_status()
-            print("Successfully connected to LM Studio")
-        except requests.RequestException as e:
-            print("\nError: Could not connect to LM Studio")
-            print("1. Make sure LM Studio is running")
-            print("2. Verify the host address is correct")
-            print("3. Check if the model is loaded")
-            print(f"\nDetailed error: {str(e)}")
         """
         Initialize vision processor.
-        
-        Args:
-            model: Name of vision-language model
-            host: LM Studio API host address
-            target_pixel_count: Target total pixels (adapts to input resolution)
-            save_debug: Whether to save debug images
         """
         self.model = model
         self.host = host.rstrip('/')
@@ -49,6 +32,27 @@ class VHSVision:
         self.save_debug = save_debug
         self.target_encoded_size = 170000  # Target size in bytes for 2048 tokens
 
+        # Verify LM Studio is running
+        try:
+            response = requests.get(f"{self.host}/v1/models", timeout=5)
+            if response.status_code == 200:
+                print("Successfully connected to LM Studio")
+                # Try to get available models
+                try:
+                    models = response.json()
+                    if models and isinstance(models, list) and len(models) > 0:
+                        self.model = models[0]["id"]  # Use first available model
+                except Exception:
+                    pass  # Keep default model if parsing fails
+            else:
+                print("\nWarning: LM Studio connection issues")
+                print("Status code:", response.status_code)
+        except requests.RequestException as e:
+            print("\nError: Could not connect to LM Studio")
+            print("1. Make sure LM Studio is running")
+            print("2. Verify the host address is correct")
+            print("3. Check if the model is loaded")
+            print(f"\nDetailed error: {str(e)}")
     def _calculate_target_size(self, h: int, w: int) -> Tuple[int, int]:
         """Calculate adaptive target size based on input resolution."""
         pixel_count = h * w
@@ -200,9 +204,6 @@ Consider: 'Th' might be 'Un', 'n' might be 'r', etc."""
             system = "You are an OCR system. Your task is to find ONLY runtime text that appears directly on THIS VHS cover - ignore any other objects or sources. Look for numbers followed by units like 'min', 'mins', 'minutes', 'hr', 'hour'. Only report what is clearly printed on the VHS cover itself."
             prompt = "Look ONLY at the VHS cover for any runtime text (numbers with time units). If you see a runtime ON THE VHS COVER ITSELF with 100% certainty, return ONLY that runtime. Otherwise say 'No runtime visible'. Be extremely conservative - only report text from the VHS cover."
             
-        # Build the complete prompt
-        full_prompt = f"{system}\n\n{prompt}"
-        
         # Prepare request matching LM Studio's vision API format
         payload = {
             "model": self.model,
@@ -219,17 +220,14 @@ Consider: 'Th' might be 'Un', 'n' might be 'r', etc."""
                             "text": prompt
                         },
                         {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{self.encode_image(processed_image)}"
-                            }
+                            "type": "image",
+                            "image": self.encode_image(processed_image)
                         }
                     ]
                 }
             ],
-            "max_tokens": 50,
-            "stream": False,
-            "temperature": 0.01  # Make model extremely conservative
+            "temperature": 0.01,  # Make model extremely conservative
+            "max_tokens": 50
         }
         
         try:

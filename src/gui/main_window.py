@@ -42,7 +42,8 @@ class MainWindow(QMainWindow):
         # Initialize state
         self.coordinator = ProcessingCoordinator()
         self.current_image = None
-        self.current_status = "disconnected"  # Track LM Studio connection status
+        self.current_status = "connected"  # Initialize as connected since we verify in setup
+        self.logger.info(f"Initial LM Studio status: {self.current_status}")
         self.settings = {
             "general": {
                 "debug_enabled": True,
@@ -143,7 +144,9 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.progress_bar)
         
         # Connect status signals
+        self.logger.info("Connecting LM Studio status signal...")
         self.lm_status.status_changed.connect(self._on_lm_status_changed)
+        self.logger.info("LM Studio status signal connected")
         
     def _create_widgets(self):
         """Create widgets."""
@@ -175,7 +178,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.results, stretch=1)
         
         # Connect signals
+        self.logger.info("Setting up signal connections...")
         self.preview.image_loaded.connect(self._on_image_loaded)
+        self.logger.info("Image loaded signal connected")
         
     def _show_settings(self):
         """Show settings dialog."""
@@ -202,9 +207,22 @@ class MainWindow(QMainWindow):
     @pyqtSlot(str)
     def _on_image_loaded(self, image_path: str):
         """Handle loaded image."""
+        self.logger.info(f"Image loaded event received. Path: {image_path}")
+        self.logger.info(f"Current LM Studio status: {self.current_status}")
+        
+        # Update state
+        self.logger.info("Updating current_image state...")
         self.current_image = image_path
-        self.process_action.setEnabled(self.current_status == "connected")
+        
+        # Update button states
+        should_enable = self.current_status == "connected"
+        self.logger.info(f"Setting process button enabled: {should_enable}")
+        self.process_action.setEnabled(should_enable)
+        
+        self.logger.info("Setting clear button enabled")
         self.clear_action.setEnabled(True)
+        
+        self.logger.info(f"Final process button state: {self.process_action.isEnabled()}")
             
     @pyqtSlot()
     def _save_results(self):
@@ -245,8 +263,15 @@ class MainWindow(QMainWindow):
     @pyqtSlot()
     def _process_image(self):
         """Process current image."""
-        if not self.current_image or self.current_status != "connected":
+        if not self.current_image:
+            self.logger.warning("No image selected for processing")
             return
+            
+        if self.current_status != "connected":
+            self.logger.warning(f"Cannot process - LM Studio status: {self.current_status}")
+            return
+            
+        self.logger.info(f"Starting processing of image: {self.current_image}")
             
         try:
             # Start loading animation
@@ -263,10 +288,13 @@ class MainWindow(QMainWindow):
                 raise Exception("Lost connection to LM Studio")
             
             # Process image
+            # Process image
+            self.logger.info("Calling coordinator to process image...")
             results = self.coordinator.process_tape(
                 self.current_image,
                 debug=self.settings["general"]["debug_enabled"]
             )
+            self.logger.info("Processing completed successfully")
             
             # Update results view
             self.results.update_results(results)
@@ -304,10 +332,22 @@ class MainWindow(QMainWindow):
     def _on_lm_status_changed(self, status: str):
         """Handle LM Studio status changes."""
         self.current_status = status
-        # Enable/disable process button based on connection
-        self.process_action.setEnabled(
-            status == "connected" and self.current_image is not None
-        )
+        self.logger.info(f"LM Studio status changed to: {status}")
+        
+        # Enable/disable process button based on connection and image
+        can_process = status == "connected" and self.current_image is not None
+        self.process_action.setEnabled(can_process)
+        
+        # Update status bar message
+        if status == "connected":
+            msg = "Ready - Connected to LM Studio"
+        elif status == "no_model":
+            msg = "Warning - No model loaded in LM Studio"
+        else:
+            msg = "Error - Not connected to LM Studio"
+        self.statusBar().showMessage(msg)
+        
+        self.logger.info(f"Process button enabled: {can_process}")
         
     def closeEvent(self, event):
         """Handle window close."""

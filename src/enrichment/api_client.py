@@ -3,7 +3,38 @@ API client for enriching media metadata.
 """
 from typing import Dict, Any, Optional
 import requests
-from ..config.settings import TMDB_API_KEY, DISCOGS_API_KEY
+import logging
+from ..config.settings import (
+    TMDB_API_KEY,
+    DISCOGS_CONSUMER_KEY,
+    DISCOGS_CONSUMER_SECRET
+)
+
+logger = logging.getLogger(__name__)
+
+def create_empty_movie_result() -> Dict[str, Any]:
+    """Create empty movie result structure."""
+    return {
+        'title': None,
+        'year': None,
+        'runtime': None,
+        'genre': None,
+        'director': None,
+        'cast': [],
+        'plot': None
+    }
+
+def create_empty_audio_result() -> Dict[str, Any]:
+    """Create empty audio result structure."""
+    return {
+        'artist': None,
+        'album': None,
+        'year': None,
+        'genre': None,
+        'label': None,
+        'format': None,
+        'tracks': []
+    }
 
 def search_movie_details(text: str) -> Dict[str, Any]:
     """
@@ -13,21 +44,13 @@ def search_movie_details(text: str) -> Dict[str, Any]:
         text: Extracted text from media cover
         
     Returns:
-        Dictionary of movie details
+        Dictionary of movie details (empty if no API key or error)
     """
     # Default empty results
-    results = {
-        'title': None,
-        'year': None,
-        'runtime': None,
-        'genre': None,
-        'director': None,
-        'cast': [],
-        'plot': None
-    }
+    results = create_empty_movie_result()
     
     if not TMDB_API_KEY:
-        print("Warning: TMDB_API_KEY not set")
+        logger.warning("No TMDB API key configured")
         return results
         
     try:
@@ -88,7 +111,7 @@ def search_movie_details(text: str) -> Dict[str, Any]:
                     ]
                 
     except Exception as e:
-        print(f"Error fetching movie details: {e}")
+        logger.error(f"Error fetching movie details: {e}")
         
     return results
 
@@ -101,20 +124,12 @@ def search_audio_details(text: str, media_type: str) -> Dict[str, Any]:
         media_type: Type of audio media (CD, VINYL, CASSETTE)
         
     Returns:
-        Dictionary of audio details
+        Dictionary of audio details (empty if no API key or error)
     """
-    results = {
-        'artist': None,
-        'album': None,
-        'year': None,
-        'genre': None,
-        'label': None,
-        'format': None,
-        'tracks': []
-    }
+    results = create_empty_audio_result()
     
-    if not DISCOGS_API_KEY:
-        print("Warning: DISCOGS_API_KEY not set")
+    if not (DISCOGS_CONSUMER_KEY and DISCOGS_CONSUMER_SECRET):
+        logger.warning("No Discogs API credentials configured")
         return results
         
     try:
@@ -124,16 +139,21 @@ def search_audio_details(text: str, media_type: str) -> Dict[str, Any]:
             potential_artist = lines[0]
             potential_album = lines[1]
             
+            # Common headers for all requests
+            headers = {
+                'User-Agent': 'MediaProcessor/1.0',
+                'Authorization': f'Discogs key={DISCOGS_CONSUMER_KEY}, secret={DISCOGS_CONSUMER_SECRET}'
+            }
+            
             # Search Discogs
             response = requests.get(
                 'https://api.discogs.com/database/search',
                 params={
-                    'key': DISCOGS_API_KEY,
                     'artist': potential_artist,
                     'release_title': potential_album,
                     'type': 'release'
                 },
-                headers={'User-Agent': 'MediaProcessor/1.0'}
+                headers=headers
             )
             
             if response.status_code == 200:
@@ -145,7 +165,7 @@ def search_audio_details(text: str, media_type: str) -> Dict[str, Any]:
                     release_id = release['id']
                     details = requests.get(
                         f'https://api.discogs.com/releases/{release_id}',
-                        headers={'User-Agent': 'MediaProcessor/1.0'}
+                        headers=headers
                     ).json()
                     
                     # Update results
@@ -163,6 +183,6 @@ def search_audio_details(text: str, media_type: str) -> Dict[str, Any]:
                     })
                     
     except Exception as e:
-        print(f"Error fetching audio details: {e}")
+        logger.error(f"Error fetching audio details: {e}")
         
     return results

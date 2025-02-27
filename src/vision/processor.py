@@ -1,94 +1,140 @@
 """
-Vision processing module using LM Studio for media image analysis.
+Vision processing module.
 """
-import os
-from datetime import datetime
+import logging
+from pathlib import Path
 from typing import Dict, Any
+
 import cv2
 
-from .lmstudio_vision import VHSVision
+from ..utils.opencv_utils import (
+    load_image,
+    preprocess_image,
+    normalize_image,
+    extract_text_regions
+)
+from .vhs_vision import VHSVision
+
+logger = logging.getLogger(__name__)
 
 class VisionProcessor:
-    """
-    Handles image processing and text extraction using LM Studio vision model.
-    """
+    """Vision processing pipeline."""
     
-    def __init__(self, debug_output_dir: str = "debug_output"):
-        """Initialize the vision processor."""
-        self.debug_output_dir = debug_output_dir
-        os.makedirs(debug_output_dir, exist_ok=True)
+    def __init__(self, debug_output_dir: str = None):
+        """
+        Initialize processor.
         
-        # Initialize LM Studio vision component
-        self.vision = VHSVision(
-            model="lmstudio-community/minicpm-o-2_6",
-            save_debug=True
-        )
+        Args:
+            debug_output_dir: Directory for debug output images. If None, debug is disabled.
+        """
+        self.debug = debug_output_dir is not None
+        self.debug_dir = debug_output_dir
         
-        # Base confidence threshold
-        self.confidence_threshold = 70.0
-
+        # Initialize vision model
+        self.vision = VHSVision(save_debug=self.debug)
+        
     def process_image(self, image_path: str) -> Dict[str, Any]:
         """
-        Process media image with LM Studio vision model.
+        Process VHS cover image.
         
         Args:
             image_path: Path to image file
             
         Returns:
-            Dictionary containing extracted data and debug info
+            Dictionary containing processing results
         """
-        # Load image
-        image = cv2.imread(image_path)
-        if image is None:
-            raise ValueError(f"Failed to load image: {image_path}")
-            
-        # Extract text for each region
-        results = {
-            "title": self.vision.extract_info(image, info_type="title"),
-            "year": self.vision.extract_info(image, info_type="year"),
-            "runtime": self.vision.extract_info(image, info_type="runtime")
-        }
+        logger.info(f"Processing image: {image_path}")
         
-        # Format results
-        extracted_data = {}
-        debug_info = {
-            "original_image": image_path,
-            "confidence_scores": {},
-            "timestamp": datetime.now().strftime("%Y%m%d_%H%M%S")
-        }
-        
-        for field, result in results.items():
-            extracted_data[field] = result.get("text", "")
-            debug_info["confidence_scores"][field] = result.get("confidence", 0.0)
-            
-            # Save any error messages
-            if "error" in result:
-                debug_info.setdefault("errors", {})[field] = result["error"]
+        try:
+            # Load and preprocess image
+            image = load_image(image_path)
+            if image is None:
+                return {
+                    "success": False,
+                    "error": f"Failed to load image: {image_path}"
+                }
                 
-        return {
-            "extracted_data": extracted_data,
-            "debug_info": debug_info
-        }
-        
+            # Save original for debug
+            if self.debug:
+                self.vision.save_debug_image(
+                    image, 
+                    "original",
+                    self.debug_dir
+                )
+                
+            # Preprocess image
+            preprocessed = preprocess_image(image)
+            if self.debug:
+                self.vision.save_debug_image(
+                    preprocessed,
+                    "preprocessed",
+                    self.debug_dir
+                )
+            
+            # Extract info
+            results = {
+                "success": True,
+                "image_path": image_path,
+                "extracted_data": {}
+            }
+            
+            # Extract title
+            title_result = self.vision.extract_info(preprocessed, "title")
+            if title_result["text"]:
+                results["extracted_data"]["title"] = title_result["text"]
+                results["extracted_data"]["title_confidence"] = title_result["confidence"]
+                
+            # Extract year
+            year_result = self.vision.extract_info(preprocessed, "year") 
+            if year_result["text"]:
+                results["extracted_data"]["year"] = year_result["text"]
+                results["extracted_data"]["year_confidence"] = year_result["confidence"]
+                
+            # Extract runtime
+            runtime_result = self.vision.extract_info(preprocessed, "runtime")
+            if runtime_result["text"]:
+                results["extracted_data"]["runtime"] = runtime_result["text"]
+                results["extracted_data"]["runtime_confidence"] = runtime_result["confidence"]
+            
+            return results
+            
+        except Exception as e:
+            logger.exception(f"Processing error: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+            
     def validate_results(self, results: Dict[str, Any]) -> bool:
         """
-        Validate results meet confidence threshold.
+        Validate processing results.
         
         Args:
-            results: Processing results to validate
+            results: Results dictionary from process_image()
             
         Returns:
-            True if results meet confidence threshold
+            True if results are valid, False otherwise
         """
-        if not results or "debug_info" not in results:
+        if not isinstance(results, dict):
+            logger.error("Results is not a dictionary")
             return False
             
-        confidence_scores = results["debug_info"].get("confidence_scores", {})
-        if not confidence_scores:
+        if not results.get("success", False):
+            logger.error("Processing was not successful")
             return False
             
-        # Check if any field meets threshold
-        return any(
-            score >= self.confidence_threshold 
-            for score in confidence_scores.values()
-        )
+        if "extracted_data" not in results:
+            logger.error("No extracted data in results")
+            return False
+            
+        extracted = results["extracted_data"]
+        if not extracted:
+            logger.error("Extracted data is empty")
+            return False
+            
+        # Should have at least title
+        if "title" not in extracted:
+            logger.error("No title in extracted data")
+            return False
+            
+        return True

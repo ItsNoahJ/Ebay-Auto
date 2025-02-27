@@ -8,7 +8,9 @@ An application for scanning and digitizing VHS tape covers using computer vision
 
 1. Install Python 3.8+ and pip
 2. Install [LM Studio](https://lmstudio.ai/) for vision processing
-3. Get a TMDB API key from [https://www.themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)
+3. (Optional) Get API keys for metadata enrichment:
+   - TMDB API key from [www.themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)
+   - Discogs API access from [www.discogs.com/settings/developers](https://www.discogs.com/settings/developers)
 
 ### Installation
 
@@ -28,9 +30,11 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-4. Edit `.env` and set:
-- `TMDB_API_KEY`: Your TMDB API key
-- Other settings as needed
+4. (Optional) Edit `.env` and set:
+- `TESSERACT_PATH`: Path to Tesseract OCR executable
+- `DEBUG`: Set to "true" for debug output
+
+Note: API keys can now be configured directly in the application's settings dialog.
 
 ### Running LM Studio
 
@@ -53,9 +57,29 @@ python run_gui.py path/to/image.jpg
 ## Features
 
 - VHS cover text extraction using LM Studio vision model
-- Movie information lookup via TMDB API
+- Optional metadata enrichment:
+  - Movie information lookup via TMDB API
+  - Music information lookup via Discogs API
 - Debug visualization of processing steps
 - Results export to JSON
+
+## Configuration
+
+### API Settings
+
+The application includes a settings dialog (File > Settings) where you can configure:
+
+1. TMDB API Integration (Optional)
+   - Enter your TMDB API key
+   - Test the connection
+   - Use for movie metadata lookup
+
+2. Discogs API Integration (Optional)
+   - Enter your Discogs Consumer Key and Secret
+   - Test the connection
+   - Use for music metadata lookup
+
+Note: Both APIs are optional. The application will work without them but won't fetch additional metadata.
 
 ## Development
 
@@ -72,10 +96,11 @@ python run_gui.py path/to/image.jpg
    - Verify the model is loaded
    - Check if the API server is running on port 1234
 
-2. "TMDB client disabled"
-   - Verify your TMDB API key in .env
+2. "API integration disabled"
+   - Open Settings dialog and verify API keys
    - Check internet connection
-   - Ensure the API key has proper permissions
+   - Test connection using the "Test Key" buttons
+   - For Discogs, ensure both Consumer Key and Secret are entered
 
 3. "No text extracted"
    - Try adjusting image lighting and angle

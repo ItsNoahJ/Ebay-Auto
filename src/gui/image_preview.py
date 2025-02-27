@@ -61,24 +61,32 @@ class ImagePreview(QLabel):
         Args:
             image_path: Path to image file
         """
+        self.logger.info(f"Loading image: {image_path}")
         try:
             # Load image
             image = cv2.imread(image_path)
             
             if image is None:
+                self.logger.error(f"Failed to load image: {image_path}")
                 raise RuntimeError(
                     f"Failed to load image: {image_path}"
                 )
+                
+            self.logger.info("Image loaded successfully")
                 
             # Store image and path
             self.current_image = image
             self.current_path = image_path
             
             # Update preview
+            self.logger.info("Updating preview...")
             self._update_preview()
+            self.logger.info("Preview updated")
             
             # Emit signal
+            self.logger.info(f"Emitting image_loaded signal with path: {image_path}")
             self.image_loaded.emit(image_path)
+            self.logger.info("Signal emitted")
             
         except Exception as e:
             self.logger.exception("Load error")

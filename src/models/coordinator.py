@@ -1,243 +1,122 @@
 """
-Processing coordinator module.
+Media processing coordinator.
 """
+from datetime import datetime
 import json
 import logging
-import re
-import time
+import os
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+import cv2
 
-from ..config.settings import STORAGE_PATHS
-from ..enrichment.tmdb_client import TMDBClient
 from ..vision.processor import VisionProcessor
+from ..enrichment.api_client import (
+    search_movie_details, 
+    search_audio_details,
+    create_empty_movie_result,
+    create_empty_audio_result
+)
+from ..config.settings import STORAGE_PATHS
+
+logger = logging.getLogger(__name__)
 
 class ProcessingCoordinator:
-    """Coordinates tape processing workflow."""
+    """Coordinates the media processing pipeline."""
     
     def __init__(self):
         """Initialize coordinator."""
-        self.logger = logging.getLogger(__name__)
+        # Initialize vision processor with debug output enabled
+        self.vision_processor = VisionProcessor(debug_output_dir="debug_output")
         
-        # Initialize components
-        self.vision = VisionProcessor()
-        try:
-            self.api = TMDBClient()
-        except ValueError as e:
-            self.logger.warning(f"TMDB client disabled: {e}")
-            self.api = None
-        
-    def _extract_year(self, text: str) -> Optional[str]:
+    def process_tape(self, image_path: str, media_type: str = "MOVIE", debug: bool = False) -> dict:
         """
-        Extract year from text.
+        Process a media cover image.
         
         Args:
-            text: Input text
+            image_path: Path to image file
+            media_type: Type of media (MOVIE, CD, VINYL, CASSETTE)
+            debug: Enable debug visualization (unused, debug is set in processor init)
             
         Returns:
-            Year string if found
+            Dict containing processing results
         """
-        # Look for year in parentheses
-        match = re.search(r"\((\d{4})\)", text)
+        logger.info(f"Processing {image_path}")
         
-        if match:
-            return match.group(1)
-            
-        # Look for standalone year
-        match = re.search(r"\b(19|20)\d{2}\b", text)
-        
-        if match:
-            return match.group(0)
-            
-        return None
-        
-    def _clean_title(self, text: str) -> str:
-        """
-        Clean extracted title text.
-        
-        Args:
-            text: Raw title text
-            
-        Returns:
-            Cleaned title
-        """
-        # Remove year
-        text = re.sub(r"\(\d{4}\)", "", text)
-        
-        # Remove special characters
-        text = re.sub(r"[^\w\s-]", "", text)
-        
-        # Normalize whitespace
-        text = " ".join(text.split())
-        
-        return text.strip()
-        
-    def _find_best_match(
-        self,
-        title: str,
-        year: Optional[str],
-        results: List[Dict]
-    ) -> Optional[Dict]:
-        """
-        Find best matching movie result.
-        
-        Args:
-            title: Movie title
-            year: Release year
-            results: Search results
-            
-        Returns:
-            Best matching result if found
-        """
-        if not results:
-            return None
-            
-        # Score results
-        scored = []
-        
-        for result in results:
-            score = 0
-            
-            # Compare titles
-            if result["title"].lower() == title.lower():
-                score += 3
-            elif result["title"].lower() in title.lower():
-                score += 2
-            elif title.lower() in result["title"].lower():
-                score += 1
-                
-            # Compare years
-            if (
-                year and
-                "release_date" in result and
-                result["release_date"].startswith(year)
-            ):
-                score += 2
-                
-            # Add to scored list
-            scored.append((score, result))
-            
-        # Sort by score
-        scored.sort(key=lambda x: x[0], reverse=True)
-        
-        # Get best match
-        if scored and scored[0][0] > 0:
-            return scored[0][1]
-            
-        return None
-        
-    def _save_results(
-        self,
-        image_path: str,
-        results: Dict
-    ) -> str:
-        """
-        Save processing results.
-        
-        Args:
-            image_path: Path to processed image
-            results: Processing results
-            
-        Returns:
-            Path to results file
-        """
-        # Create filename
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        filename = f"vhs_data_{timestamp}.json"
-        
-        # Create path
-        results_path = STORAGE_PATHS["results"] / filename
-        results_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Add metadata
-        results["metadata"] = {
+        # Initialize results
+        results = {
+            "success": False,
+            "timestamp": datetime.now().isoformat(),
             "image_path": image_path,
-            "timestamp": timestamp
+            "media_type": media_type,
+            "extracted_titles": [],
+            "movie_data": create_empty_movie_result() if media_type == "MOVIE" else None,
+            "audio_data": create_empty_audio_result() if media_type in ["CD", "VINYL", "CASSETTE"] else None,
+            "vision_data": None,
+            "debug_image": None,
+            "results_path": None
         }
         
-        # Save JSON
-        with open(results_path, "w") as f:
-            json.dump(results, f, indent=2)
-            
-        return str(results_path)
-        
-    def process_tape(
-        self,
-        image_path: str,
-        debug: bool = False
-    ) -> Dict:
-        """
-        Process VHS tape image.
-        
-        Args:
-            image_path: Path to tape image
-            debug: Enable debug output
-            
-        Returns:
-            Processing results
-        """
         try:
-            # Process image
-            results = self.vision.process_image(image_path)
+            # Process image with vision model
+            vision_results = self.vision_processor.process_image(image_path)
             
-            # Extract titles from OCR results
-            titles = []
-            
-            # Get extracted text
-            title_text = results["extracted_data"]["title"]
-            if title_text:
-                # Split into lines
-                lines = title_text.splitlines()
+            # Check vision processing success
+            if not self.vision_processor.validate_results(vision_results):
+                results["error"] = "Vision processing failed validation"
+                return results
                 
-                # Process each line
-                for line in lines:
-                    # Skip short lines
-                    if len(line) < 3:
-                        continue
-                        
-                    # Get year
-                    year = self._extract_year(line)
-                    
-                    # Clean title
-                    title = self._clean_title(line)
-                    
-                    # Skip if too short
-                    if len(title) < 3:
-                        continue
-                        
-                    # Add to list
-                    titles.append(
-                        f"{title} ({year})" if year else title
-                    )
-                    
-            results["extracted_titles"] = titles
+            # Update results with vision data
+            results["vision_data"] = vision_results
+            results["success"] = True
             
-            # Find movie data
-            if titles:
-                # Search for first title
-                title = titles[0]
-                year = self._extract_year(title)
-                clean_title = self._clean_title(title)
-                
-                # Find movie data if API client is available
-                if self.api:
-                    movie_data = self.api.find_best_match(
-                        title=clean_title,
-                        year=int(year) if year else None
-                    )
+            # Extract title from vision results if available
+            if "extracted_data" in vision_results:
+                title = vision_results["extracted_data"].get("title")
+                if title:
+                    results["extracted_titles"].append(title)
                     
-                    if movie_data:
-                        results["movie_data"] = movie_data
-                        
+                    # Enrich with metadata based on media type
+                    if media_type == "MOVIE":
+                        results["movie_data"] = search_movie_details(title)
+                    elif media_type in ["CD", "VINYL", "CASSETTE"]:
+                        results["audio_data"] = search_audio_details(title, media_type)
+            
             # Save results
-            results_path = self._save_results(image_path, results)
-            results["results_path"] = results_path
-            
-            return results
+            if results["success"]:
+                results_path = self._save_results(results)
+                results["results_path"] = str(results_path)
             
         except Exception as e:
-            self.logger.exception("Processing error")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            logger.error(f"Error processing {image_path}: {str(e)}")
+            results["success"] = False
+            results["error"] = str(e)
+            
+        return results
+        
+    def _save_results(self, results: dict) -> Path:
+        """
+        Save processing results to JSON file.
+        
+        Args:
+            results: Results dictionary
+            
+        Returns:
+            Path to saved results file
+        """
+        # Create results directory
+        results_dir = STORAGE_PATHS["results"]
+        results_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate filename from timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        results_path = results_dir / f"results_{timestamp}.json"
+        
+        # Save to file
+        with open(results_path, "w") as f:
+            # Convert results to serializable format
+            clean_results = results.copy()
+            clean_results["timestamp"] = results["timestamp"]
+            clean_results.pop("debug_image", None)  # Remove debug image
+            
+            json.dump(clean_results, f, indent=2)
+            
+        return results_path

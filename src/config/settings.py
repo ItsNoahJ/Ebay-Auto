@@ -23,14 +23,10 @@ def validate_settings() -> Dict[str, Any]:
         raise ValueError(f"Tesseract not found at: {tesseract_path}")
     settings['TESSERACT_PATH'] = tesseract_path
     
-    # Validate API keys
-    if not TMDB_API_KEY:
-        print("Warning: TMDB_API_KEY not set")
+    # Validate API keys (both are optional)
     settings['TMDB_API_KEY'] = TMDB_API_KEY
-    
-    if not DISCOGS_API_KEY:
-        print("Warning: DISCOGS_API_KEY not set")
-    settings['DISCOGS_API_KEY'] = DISCOGS_API_KEY
+    settings['DISCOGS_CONSUMER_KEY'] = DISCOGS_CONSUMER_KEY
+    settings['DISCOGS_CONSUMER_SECRET'] = DISCOGS_CONSUMER_SECRET
     
     # Add other settings
     settings['GUI_SETTINGS'] = GUI_SETTINGS
@@ -136,9 +132,10 @@ VISION_SETTINGS = {
     "denoise": True  # Enable denoising
 }
 
-# API Configuration
+# API Configuration (all optional)
 TMDB_API_KEY = os.getenv('TMDB_API_KEY', '')
-DISCOGS_API_KEY = os.getenv('DISCOGS_API_KEY', '')
+DISCOGS_CONSUMER_KEY = os.getenv('DISCOGS_CONSUMER_KEY', '')
+DISCOGS_CONSUMER_SECRET = os.getenv('DISCOGS_CONSUMER_SECRET', '')
 
 # Cache Settings
 CACHE_ENABLED = True

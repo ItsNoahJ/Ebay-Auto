@@ -69,40 +69,60 @@ class ConnectionStatusWidget(QWidget):
     def check_connection(self, check_model=False):
         """Check LM Studio connection status."""
         try:
-            # Try to connect to LM Studio (quick ping)
+            print("\nChecking LM Studio connection...")
+            
+            # First try to connect to LM Studio API
             response = requests.get("http://127.0.0.1:1234/v1/models", timeout=2)
+            print(f"Models endpoint response: {response.status_code}")
             
             if response.status_code == 200:
-                # If this is startup or we need to check model status
-                if check_model:
+                response_data = response.json()
+                print(f"Available models: {response_data}")
+                
+                # Extract models from response
+                models = response_data.get('data', [])
+                
+                # Always check model on startup or when explicitly requested
+                if check_model or not self.model_loaded:
                     try:
+                        print("Testing model...")
+                        # Use first model ID if available, otherwise fallback to local-model
+                        model_id = models[0]['id'] if models else "local-model"
+                        print(f"Using model: {model_id}")
+                        
                         test_response = requests.post(
                             "http://127.0.0.1:1234/v1/chat/completions",
                             json={
-                                "model": "lmstudio-community/minicpm-o-2_6",
+                                "model": model_id,
                                 "messages": [{"role": "user", "content": "test"}],
                                 "max_tokens": 1
                             },
                             timeout=5
                         )
+                        print(f"Model test response: {test_response.status_code}")
                         
-                        if test_response.status_code == 200:
+                        if test_response.status_code in [200, 400]:
+                            # 400 might mean wrong parameters but server is working
                             self.model_loaded = True
                             self._update_status("connected")
                         else:
+                            print(f"Unexpected model test response: {test_response.text}")
                             self.model_loaded = False
                             self._update_status("no_model")
-                    except requests.RequestException:
+                    except requests.RequestException as e:
+                        print(f"Model test failed: {str(e)}")
                         self.model_loaded = False
                         self._update_status("no_model")
                 else:
-                    # For manual refresh, use cached model state
+                    # For manual refresh without model check, use cached state
                     self._update_status("connected" if self.model_loaded else "no_model")
             else:
+                print(f"Models endpoint failed: {response.text}")
                 self.model_loaded = False
                 self._update_status("disconnected")
                 
-        except requests.RequestException:
+        except requests.RequestException as e:
+            print(f"Connection check failed: {str(e)}")
             self.model_loaded = False
             self._update_status("disconnected")
             
