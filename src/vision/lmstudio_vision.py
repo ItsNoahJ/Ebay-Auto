@@ -53,6 +53,7 @@ class VHSVision:
             print("2. Verify the host address is correct")
             print("3. Check if the model is loaded")
             print(f"\nDetailed error: {str(e)}")
+
     def _calculate_target_size(self, h: int, w: int) -> Tuple[int, int]:
         """Calculate adaptive target size based on input resolution."""
         pixel_count = h * w
@@ -181,48 +182,22 @@ class VHSVision:
         
         # Natural language prompts for each info type
         if info_type == "title":
-            system = """You are an OCR system specialized in reading VHS cover text with extremely high accuracy, particularly with cursive fonts. Your task is to:
-1. Carefully examine each character in the title text, especially in cursive sections
-2. Pay special attention to:
-   - Connected letters in cursive writing
-   - Similar-looking character pairs (e.g., 'Th' vs 'Un', 'n' vs 'r')
-   - How letters flow into each other in cursive text
-3. Use the context of the entire title to verify each word
-4. For cursive text, trace the continuous flow of the writing
-5. Only transcribe text that you can read with absolute certainty
-
-Do not use any external knowledge about movies - only read what is actually printed."""
-            prompt = """Look at the movie title on this VHS cover. Read each character individually and carefully.
-If you're unsure about ANY character, mark it with a '?' (e.g., "The ?ndertaker")
-Return ONLY the text as it appears.
-If you cannot read the text clearly, say 'Unable to read text clearly'.
-Consider: 'Th' might be 'Un', 'n' might be 'r', etc."""
+            prompt = "Look at this VHS cover and tell me ONLY the movie title. Nothing else."
         elif info_type == "year":
-            system = "You are an OCR system. Your task is to find and read ONLY clearly visible 4-digit numbers that are definitely printed on THIS VHS cover - ignore any other objects, books, or items in the image. Only report numbers from the VHS cover itself."
-            prompt = "Look ONLY at the VHS cover (not books or other items) for any clearly visible 4-digit numbers. If you see a number ON THE VHS COVER ITSELF with 100% certainty, return ONLY that number. Otherwise say 'No year visible'. Only report text from the VHS cover."
+            prompt = "Look at this VHS cover and tell me ONLY the release year if visible. Just the 4-digit number."
         elif info_type == "runtime":
-            system = "You are an OCR system. Your task is to find ONLY runtime text that appears directly on THIS VHS cover - ignore any other objects or sources. Look for numbers followed by units like 'min', 'mins', 'minutes', 'hr', 'hour'. Only report what is clearly printed on the VHS cover itself."
-            prompt = "Look ONLY at the VHS cover for any runtime text (numbers with time units). If you see a runtime ON THE VHS COVER ITSELF with 100% certainty, return ONLY that runtime. Otherwise say 'No runtime visible'. Be extremely conservative - only report text from the VHS cover."
+            prompt = "Look at this VHS cover and tell me the COMPLETE runtime including hours and minutes. Just state the duration, nothing else."
             
-        # Prepare request matching LM Studio's vision API format
+        # Prepare request for LM Studio's vision API
+        encoded_image = self.encode_image(processed_image)
         payload = {
             "model": self.model,
             "messages": [
                 {
-                    "role": "system",
-                    "content": system
-                },
-                {
                     "role": "user",
                     "content": [
-                        {
-                            "type": "text",
-                            "text": prompt
-                        },
-                        {
-                            "type": "image",
-                            "image": self.encode_image(processed_image)
-                        }
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"}}
                     ]
                 }
             ],
@@ -317,11 +292,18 @@ Consider: 'Th' might be 'Un', 'n' might be 'r', etc."""
                     text = text[len(prefix):].strip()
         
         elif info_type == "runtime":
-            # Extract just the numbers and "min"
+            # Handle both hour + minute and minute-only formats
             import re
-            match = re.search(r'(\d+)\s*min', text.lower())
-            if match:
-                text = f"{match.group(1)} min"
+            # Look for hour+minute pattern first
+            hour_min = re.search(r'(\d+)\s*(?:hour|hr).*?(\d+)\s*(?:minute|min)', text.lower())
+            if hour_min:
+                total_mins = int(hour_min.group(1)) * 60 + int(hour_min.group(2))
+                text = f"{total_mins} min"
+            else:
+                # Fall back to minutes-only pattern
+                mins = re.search(r'(\d+)\s*(?:minute|min)', text.lower())
+                if mins:
+                    text = f"{mins.group(1)} min"
                 
         elif info_type == "year":
             # Extract first 4-digit number

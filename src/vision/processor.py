@@ -1,110 +1,139 @@
 """
-Vision processing module.
+VHS image processing module.
 """
 import logging
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 import cv2
+import numpy as np
 
-from ..utils.opencv_utils import (
-    load_image,
-    preprocess_image,
-    normalize_image,
-    extract_text_regions
-)
+from ..config.settings import TMDB_API_KEY, DISCOGS_CONSUMER_KEY
+from ..enrichment.api_client import search_movie_details, search_audio_details
+from ..utils import opencv_utils
 from .vhs_vision import VHSVision
 
 logger = logging.getLogger(__name__)
 
 class VisionProcessor:
-    """Vision processing pipeline."""
+    """Process VHS cover images and extract information."""
     
-    def __init__(self, debug_output_dir: str = None):
-        """
-        Initialize processor.
+    def __init__(self, model: str = "local-model", save_debug: bool = False):
+        """Initialize processor with model and debug settings."""
+        self.vision = VHSVision(model=model, save_debug=save_debug)
+        self.save_debug = save_debug
         
-        Args:
-            debug_output_dir: Directory for debug output images. If None, debug is disabled.
-        """
-        self.debug = debug_output_dir is not None
-        self.debug_dir = debug_output_dir
+        # Check API availability
+        self.tmdb_available = bool(TMDB_API_KEY)
+        self.discogs_available = bool(DISCOGS_CONSUMER_KEY)
         
-        # Initialize vision model
-        self.vision = VHSVision(save_debug=self.debug)
-        
+        if not self.tmdb_available:
+            logger.warning("TMDB API not available - will rely on vision only")
+        if not self.discogs_available:
+            logger.warning("Discogs API not available - will rely on vision only")
+            
     def process_image(self, image_path: str) -> Dict[str, Any]:
         """
-        Process VHS cover image.
+        Process image and extract media information.
         
         Args:
             image_path: Path to image file
             
         Returns:
-            Dictionary containing processing results
+            Dictionary with extracted info and confidence scores
         """
         logger.info(f"Processing image: {image_path}")
         
-        try:
-            # Load and preprocess image
-            image = load_image(image_path)
-            if image is None:
-                return {
-                    "success": False,
-                    "error": f"Failed to load image: {image_path}"
-                }
-                
-            # Save original for debug
-            if self.debug:
-                self.vision.save_debug_image(
-                    image, 
-                    "original",
-                    self.debug_dir
-                )
-                
-            # Preprocess image
-            preprocessed = preprocess_image(image)
-            if self.debug:
-                self.vision.save_debug_image(
-                    preprocessed,
-                    "preprocessed",
-                    self.debug_dir
-                )
+        # Load image
+        image = opencv_utils.load_image(image_path)
+        if image is None:
+            return self._create_error_result("Failed to load image")
             
-            # Extract info
-            results = {
-                "success": True,
-                "image_path": image_path,
-                "extracted_data": {}
+        try:
+            # Preprocess image
+            processed = opencv_utils.preprocess_image(image)
+            if self.save_debug:
+                self.vision.save_debug_image(processed, "preprocessed")
+                
+            # Extract all info categories
+            results = {}
+            categories = ["title", "year", "runtime", "studio", "director", "cast", "rating"]
+            for category in categories:
+                results[category] = self.vision.extract_info(processed, category)
+                
+            # Build base result from vision
+            vision_result = {
+                "title": results["title"]["text"],
+                "year": results["year"]["text"],
+                "runtime": results["runtime"]["text"],
+                "studio": results["studio"]["text"],
+                "director": results["director"]["text"],
+                "cast": results["cast"]["text"],
+                "rating": results["rating"]["text"],
+                "confidence": {
+                    category: results[category]["confidence"]
+                    for category in categories
+                },
+                "source": {
+                    category: "vision"
+                    for category in categories
+                }
             }
             
-            # Extract title
-            title_result = self.vision.extract_info(preprocessed, "title")
-            if title_result["text"]:
-                results["extracted_data"]["title"] = title_result["text"]
-                results["extracted_data"]["title_confidence"] = title_result["confidence"]
+            # Check if we need API backup for any low confidence results
+            if self.tmdb_available and self._needs_api_backup(vision_result):
+                api_result = search_movie_details(vision_result["title"])
                 
-            # Extract year
-            year_result = self.vision.extract_info(preprocessed, "year") 
-            if year_result["text"]:
-                results["extracted_data"]["year"] = year_result["text"]
-                results["extracted_data"]["year_confidence"] = year_result["confidence"]
+                # Update low confidence fields with API data
+                vision_result.update(
+                    self._merge_api_results(vision_result, api_result)
+                )
                 
-            # Extract runtime
-            runtime_result = self.vision.extract_info(preprocessed, "runtime")
-            if runtime_result["text"]:
-                results["extracted_data"]["runtime"] = runtime_result["text"]
-                results["extracted_data"]["runtime_confidence"] = runtime_result["confidence"]
-            
-            return results
+            return vision_result
             
         except Exception as e:
-            logger.exception(f"Processing error: {str(e)}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            logger.error(f"Processing error: {e}")
+            return self._create_error_result(str(e))
             
+    def _needs_api_backup(self, result: Dict[str, Any], threshold: float = 70.0) -> bool:
+        """Check if any field needs API backup based on confidence."""
+        return any(
+            conf < threshold 
+            for conf in result["confidence"].values()
+        )
+        
+    def _merge_api_results(self, vision_result: Dict[str, Any], api_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Merge API results for low confidence fields."""
+        merged = vision_result.copy()
+        
+        # Only update fields where vision confidence is low
+        confidence_threshold = 70.0
+        
+        # Base fields that can come from TMDB
+        base_fields = ["title", "year", "runtime"]
+        # Additional fields that might be available from TMDB
+        extra_fields = ["studio", "director", "cast"]
+        
+        for field in base_fields + extra_fields:
+            if (vision_result["confidence"][field] < confidence_threshold 
+                and api_result.get(field)):
+                merged[field] = api_result[field]
+                merged["confidence"][field] = 85.0  # Standard API confidence
+                merged["source"][field] = "api"
+                
+        return merged
+            
+    def _create_error_result(self, error: str) -> Dict[str, Any]:
+        """Create error result dictionary."""
+        categories = ["title", "year", "runtime", "studio", "director", "cast", "rating"]
+        return {
+            category: "" for category in categories
+        } | {
+            "confidence": {category: 0 for category in categories},
+            "source": {category: "none" for category in categories},
+            "error": error
+        }
+        
     def validate_results(self, results: Dict[str, Any]) -> bool:
         """
         Validate processing results.
@@ -119,22 +148,21 @@ class VisionProcessor:
             logger.error("Results is not a dictionary")
             return False
             
-        if not results.get("success", False):
-            logger.error("Processing was not successful")
-            return False
-            
-        if "extracted_data" not in results:
-            logger.error("No extracted data in results")
-            return False
-            
-        extracted = results["extracted_data"]
-        if not extracted:
-            logger.error("Extracted data is empty")
-            return False
-            
-        # Should have at least title
-        if "title" not in extracted:
-            logger.error("No title in extracted data")
+        required_fields = [
+            "title", "year", "runtime", "studio", 
+            "director", "cast", "rating",
+            "confidence", "source"
+        ]
+        
+        for field in required_fields:
+            if field not in results:
+                logger.error(f"Missing required field: {field}")
+                return False
+                
+        # At least one field should have non-zero confidence
+        confidence = results["confidence"]
+        if not any(conf > 0 for conf in confidence.values()):
+            logger.error("No fields extracted with confidence")
             return False
             
         return True

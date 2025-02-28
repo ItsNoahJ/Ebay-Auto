@@ -56,7 +56,7 @@ class MainWindow(QMainWindow):
         }
         
         # Configure window
-        self.setWindowTitle("VHS Tape Scanner")
+        self.setWindowTitle("Automedia Suite")
         self.resize(
             GUI_SETTINGS["window_width"],
             GUI_SETTINGS["window_height"]
@@ -280,7 +280,7 @@ class MainWindow(QMainWindow):
             # Show progress
             self.progress_bar.setRange(0, 0)
             self.progress_bar.show()
-            self.statusBar().showMessage("Processing...")
+                # Don't show processing message, just rely on the animation
             
             # Verify we're still connected before processing
             self.lm_status.check_connection()
@@ -288,17 +288,53 @@ class MainWindow(QMainWindow):
                 raise Exception("Lost connection to LM Studio")
             
             # Process image
-            # Process image
-            self.logger.info("Calling coordinator to process image...")
-            results = self.coordinator.process_tape(
-                self.current_image,
-                debug=self.settings["general"]["debug_enabled"]
-            )
-            self.logger.info("Processing completed successfully")
+            # Process image in a background thread
+            from PyQt6.QtCore import QThread, pyqtSignal
             
-            # Update results view
-            self.results.update_results(results)
-            self.save_action.setEnabled(True)
+            class ProcessingThread(QThread):
+                finished = pyqtSignal(dict)
+                error = pyqtSignal(str)
+                
+                def __init__(self, coordinator, image_path, debug):
+                    super().__init__()
+                    self.coordinator = coordinator
+                    self.image_path = image_path
+                    self.debug = debug
+                    
+                def run(self):
+                    try:
+                        results = self.coordinator.process_tape(
+                            self.image_path,
+                            debug=self.debug
+                        )
+                        self.finished.emit(results)
+                    except Exception as e:
+                        self.error.emit(str(e))
+            
+            # Create and start processing thread
+            self.processing_thread = ProcessingThread(
+                self.coordinator,
+                self.current_image,
+                self.settings["general"]["debug_enabled"]
+            )
+            
+            def on_processing_finished(results):
+                self.logger.info("Processing completed successfully")
+                self.results.update_results(results)
+                self.save_action.setEnabled(True)
+                # Stop animation and hide progress bar only after results are displayed
+                self.lm_status.stop_loading_animation()  
+                self.progress_bar.hide()
+                
+            def on_processing_error(error):
+                self.logger.error(f"Processing error: {error}")
+                QMessageBox.critical(self, "Error", f"Processing failed: {error}")
+                self.lm_status.stop_loading_animation()  
+                self.progress_bar.hide()
+                
+            self.processing_thread.finished.connect(on_processing_finished)
+            self.processing_thread.error.connect(on_processing_error)
+            self.processing_thread.start()
             
             # Auto-save if enabled
             if self.settings["general"]["auto_save"]:
@@ -309,11 +345,7 @@ class MainWindow(QMainWindow):
                 json_path = results_dir / f"vhs_data_{timestamp}.json"
                 
                 self.results.save_results(str(json_path))
-                self.statusBar().showMessage(
-                    f"Results auto-saved to: {json_path}"
-                )
-            else:
-                self.statusBar().showMessage("Processing complete")
+                self.statusBar().showMessage(f"Auto-saved to: {json_path}")
                 
         except Exception as e:
             self.logger.exception("Processing error")

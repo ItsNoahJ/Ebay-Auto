@@ -6,9 +6,11 @@ The VHS Auto project is a system for processing VHS tape covers and audio media 
 ## Core Components
 
 ### Vision Processing
-- Uses LM Studio for text extraction
-- Implements preprocessing steps for better OCR results
-- Handles image enhancement and cleanup
+- Uses LM Studio with model-agnostic implementation for text extraction
+- Enhanced runtime extraction with support for hour+minute formats
+- Improved image preprocessing pipeline for better OCR accuracy
+- Adaptive image sizing and quality optimization
+- Robust error handling and confidence scoring
 
 ### Media Type Processing
 - Movie processing via TMDB API
@@ -21,6 +23,13 @@ The VHS Auto project is a system for processing VHS tape covers and audio media 
 - Detailed display of extracted metadata
 
 ## Recent Improvements
+
+### Vision Processing Updates
+- Updated LM Studio integration to work with any loaded model
+- Improved runtime extraction accuracy (handles both "1h 20m" and "80min" formats)
+- Enhanced image preprocessing with adaptive sizing
+- More accurate confidence scoring for extracted text
+- Verified accuracy on test cases (Pearl, Back to the Future)
 
 ### Test Coverage
 - Integration tests for both movie and audio processing pipelines

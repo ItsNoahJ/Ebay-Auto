@@ -48,20 +48,21 @@ def preprocess_image(image: np.ndarray) -> np.ndarray:
         else:
             gray = image.copy()
             
-        # Normalize contrast
-        normalized = normalize_image(gray)
+        # Apply CLAHE for adaptive contrast
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        contrast_enhanced = clahe.apply(gray)
         
         # Denoise
-        denoised = cv2.fastNlMeansDenoising(normalized)
+        denoised = cv2.fastNlMeansDenoising(contrast_enhanced)
         
-        # Adaptive threshold
+        # Adaptive threshold with original parameters
         binary = cv2.adaptiveThreshold(
             denoised,
             255,
             cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY,
-            11,
-            2
+            11,  # Original block size
+            2    # Original C parameter
         )
         
         return binary
@@ -70,22 +71,47 @@ def preprocess_image(image: np.ndarray) -> np.ndarray:
         logger.error(f"Preprocessing error: {e}")
         return image
 
-def normalize_image(image: np.ndarray) -> np.ndarray:
+def enhance_contrast(image: np.ndarray) -> np.ndarray:
     """
-    Normalize image contrast.
+    Enhance image contrast using CLAHE.
+    
+    Args:
+        image: Input grayscale image
+        
+    Returns:
+        Contrast enhanced image
+    """
+    try:
+        # Apply CLAHE
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        enhanced = clahe.apply(image)
+        
+        return enhanced
+        
+    except Exception as e:
+        logger.error(f"Contrast enhancement error: {e}")
+        return image
+
+def normalize_image(image: np.ndarray, target_mean: float = 127, target_std: float = 50) -> np.ndarray:
+    """
+    Normalize image with advanced histogram matching.
     
     Args:
         image: Input image array
+        target_mean: Target mean intensity
+        target_std: Target standard deviation
         
     Returns:
         Normalized image array
     """
     try:
-        # Create CLAHE object
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        # Calculate current statistics
+        mean = np.mean(image)
+        std = np.std(image)
         
-        # Apply CLAHE
-        normalized = clahe.apply(image)
+        # Normalize to target statistics
+        normalized = ((image - mean) * (target_std / std) + target_mean)
+        normalized = np.clip(normalized, 0, 255).astype(np.uint8)
         
         return normalized
         

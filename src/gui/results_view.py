@@ -19,18 +19,21 @@ class ResultsView(QWidget):
         layout.addWidget(tabs)
         
         # Create text areas
-        self.text_area = QTextEdit()
+        self.info_area = QTextEdit()
         self.movie_text = QTextEdit()
         self.audio_text = QTextEdit()
+        self.raw_text = QTextEdit()
         
-        self.text_area.setReadOnly(True)
+        self.info_area.setReadOnly(True)
         self.movie_text.setReadOnly(True)
         self.audio_text.setReadOnly(True)
+        self.raw_text.setReadOnly(True)
         
         # Add tabs
-        tabs.addTab(self.text_area, "Extracted Text")
+        tabs.addTab(self.info_area, "Extracted Info")
         tabs.addTab(self.movie_text, "Movie Details")
         tabs.addTab(self.audio_text, "Audio Details")
+        tabs.addTab(self.raw_text, "Raw Data")
         
     def _ensure_list(self, value) -> list:
         """Ensure value is a list."""
@@ -48,26 +51,66 @@ class ResultsView(QWidget):
             results: Dictionary of processing results
         """
         if not results.get("success", False):
-            self.text_area.setText("Error: " + results.get("error", "Unknown error"))
+            self.info_area.setText("Error: " + results.get("error", "Unknown error"))
+            self.raw_text.setText("Error: " + results.get("error", "Unknown error"))
             self.movie_text.setText("No movie data")
             self.audio_text.setText("No audio data")
             return
             
-        # Update extracted text tab
-        text_content = []
-        if results.get("extracted_titles"):
-            text_content.append("Extracted Titles:")
-            for title in results["extracted_titles"]:
-                text_content.append(f"- {title}")
+        # Update extracted info tab (clean presentation)
+        info_content = []
+        if results.get("vision_data"):
+            data = results["vision_data"]
+            # Extract the actual values from the responses
+            title = data.get("title", "").strip('."')  # Remove quotes and periods
+            if "movie title on the VHS cover is" in title:
+                title = title.split("is")[-1].strip('." ')
+            
+            year = data.get("year", "")
+            if isinstance(year, str) and year.isdigit():
+                year = year
+                
+            runtime = data.get("runtime", "")
+            if "runtime of the movie is" in runtime:
+                runtime = runtime.split("is")[-1].strip()
+                
+            # Add formatted information
+            info_content.extend([
+                "Media Information",
+                "================",
+                f"Title: {title}",
+                f"Year: {year}",
+                f"Runtime: {runtime}",
+                "",
+                "Confidence Scores",
+                "================",
+            ])
+            
+            if "confidence" in results.get("vision_data", {}):
+                conf_data = results["vision_data"]["confidence"]
+                for key, value in conf_data.items():
+                    info_content.append(f"{key.capitalize()}: {value}%")
+                    
         else:
-            text_content.append("No text extracted")
+            info_content.append("No information extracted")
+            
+        self.info_area.setText("\n".join(info_content))
+        
+        # Update raw data tab
+        raw_content = []
+        if results.get("extracted_titles"):
+            raw_content.append("Extracted Titles:")
+            for title in results["extracted_titles"]:
+                raw_content.append(f"- {title}")
+        else:
+            raw_content.append("No text extracted")
             
         if results.get("vision_data"):
-            text_content.append("\nVision Processing Data:")
+            raw_content.append("\nVision Processing Data:")
             for key, value in results["vision_data"].items():
-                text_content.append(f"{key}: {value}")
+                raw_content.append(f"{key}: {value}")
                 
-        self.text_area.setText("\n".join(text_content))
+        self.raw_text.setText("\n".join(raw_content))
         
         # Update movie tab
         movie_content = []

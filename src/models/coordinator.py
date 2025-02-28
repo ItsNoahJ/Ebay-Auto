@@ -25,7 +25,7 @@ class ProcessingCoordinator:
     def __init__(self):
         """Initialize coordinator."""
         # Initialize vision processor with debug output enabled
-        self.vision_processor = VisionProcessor(debug_output_dir="debug_output")
+        self.vision_processor = VisionProcessor(save_debug=True)
         
     def process_tape(self, image_path: str, media_type: str = "MOVIE", debug: bool = False) -> dict:
         """
