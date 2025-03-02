@@ -20,6 +20,12 @@ class VisionProcessor:
     
     def __init__(self, model: str = "local-model", save_debug: bool = False):
         """Initialize processor with model and debug settings."""
+        # Create debug output directory if needed
+        if save_debug:
+            debug_dir = Path("debug_output")
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Created debug output directory: {debug_dir}")
+            
         self.vision = VHSVision(model=model, save_debug=save_debug)
         self.save_debug = save_debug
         
@@ -55,25 +61,34 @@ class VisionProcessor:
             if self.save_debug:
                 self.vision.save_debug_image(processed, "preprocessed")
                 
-            # Extract all info categories
-            results = {}
+            # Extract info categories
             categories = ["title", "year", "runtime", "studio", "director", "cast", "rating"]
+            
+            # Extract info with confidence scores
+            extracted_data = {}
+            confidence_scores = {}
+            
             for category in categories:
-                results[category] = self.vision.extract_info(processed, category)
-                
-            # Build base result from vision
+                try:
+                    result = self.vision.extract_info(processed, category)
+                    text = result.get("text", "")
+                    # Ensure confidence is in decimal form (0.0-1.0)
+                    confidence = float(result.get("confidence", 0.0))
+                    if confidence > 1.0:  # Convert percentage to decimal if needed
+                        confidence = confidence / 100.0
+                        
+                    extracted_data[category] = text
+                    confidence_scores[category] = confidence
+                except Exception as e:
+                    logger.error(f"Error extracting {category}: {e}")
+                    extracted_data[category] = ""
+                    confidence_scores[category] = 0.0
+            
+            # Build base result
             vision_result = {
-                "title": results["title"]["text"],
-                "year": results["year"]["text"],
-                "runtime": results["runtime"]["text"],
-                "studio": results["studio"]["text"],
-                "director": results["director"]["text"],
-                "cast": results["cast"]["text"],
-                "rating": results["rating"]["text"],
-                "confidence": {
-                    category: results[category]["confidence"]
-                    for category in categories
-                },
+                **extracted_data,
+                "confidence": confidence_scores,
+                "extracted_data": extracted_data,
                 "source": {
                     category: "vision"
                     for category in categories

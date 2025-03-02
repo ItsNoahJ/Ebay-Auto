@@ -56,7 +56,7 @@ def main():
     args = parser.parse_args()
     
     print("\nInitializing VHS Vision with LM Studio...")
-    vision = VHSVision(model="lmstudio-community/minicpm-o-2_6")
+    vision = VHSVision()  # Let it auto-detect the current model
     
     # Ensure debug output directory exists
     if not os.path.exists('debug_output'):

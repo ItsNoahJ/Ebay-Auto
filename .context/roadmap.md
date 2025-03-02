@@ -1,65 +1,89 @@
-# Development Roadmap
+# Project Roadmap
 
-## v1.0 - Current Release
-✅ Basic functionality complete:
-- Text extraction from media covers
-- Movie metadata lookup via TMDB
-- Audio metadata lookup via Discogs
-- Qt-based GUI with result display
-- Integration tests for core functionality
+## Recently Completed
+- [x] Enhanced vision processing confidence calculation
+  - [x] Progressive word count penalties
+  - [x] Optimized title length validation
+  - [x] Improved confidence modifiers
+- [x] Updated preprocessing pipeline
+  - [x] Adaptive image sizing
+  - [x] CLAHE optimization
+  - [x] Enhanced text clarity
+- [x] Added comprehensive testing
+  - [x] Integration tests
+  - [x] Confidence calculation tests
+  - [x] GUI response tests
+- [x] Added detailed documentation
+  - [x] Vision processing documentation
+  - [x] Updated changelog
+  - [x] Test coverage documentation
 
-## v1.1 - Next Release
-Focus: Performance & Reliability
-- [ ] Implement caching for API results
-- [ ] Add retry mechanism for failed API calls
-- [ ] Optimize image preprocessing pipeline
-- [ ] Add logging for better debugging
-- [ ] Improve error messages and user feedback
+## Current Sprint
+- [ ] Monitor and validate confidence scoring improvements
+  - [ ] Gather metrics on accuracy vs. speed
+  - [ ] Analyze error patterns
+  - [ ] Fine-tune thresholds based on real-world usage
+- [ ] Integration refinements
+  - [ ] Optimize background processing
+  - [ ] Enhance error reporting
+  - [ ] Improve progress indicators
 
-## v1.2 - Batch Processing
-Focus: Productivity Features
-- [ ] Add batch processing capability
-- [ ] Progress tracking for batch operations
-- [ ] Export results to CSV/JSON
-- [ ] Basic reporting functionality
-- [ ] Queue management for API requests
+## Near-term Goals
+1. Performance Optimization
+   - [ ] Batch processing capabilities
+   - [ ] Caching for repeated operations
+   - [ ] Memory usage optimization
 
-## v1.3 - Enhanced Recognition
-Focus: Recognition Accuracy
-- [ ] Barcode scanning support
-- [ ] Multiple OCR engine support
-- [ ] Machine learning for text region detection
-- [ ] Custom image preprocessing profiles
-- [ ] Save/load preprocessing settings
+2. UI Enhancements
+   - [ ] Visual confidence indicators
+   - [ ] Detailed processing status
+   - [ ] Advanced error visualization
 
-## v1.4 - User Experience
-Focus: GUI Improvements
-- [ ] Dark mode support
-- [ ] Customizable result display
-- [ ] Keyboard shortcuts
-- [ ] Drag-and-drop support
-- [ ] Custom metadata fields
+3. Processing Pipeline
+   - [ ] Additional preprocessing options
+   - [ ] Custom confidence thresholds
+   - [ ] Enhanced API fallback logic
 
-## v2.0 - Advanced Features
-Focus: Extended Capabilities
-- [ ] Local media database
-- [ ] Collection management features
-- [ ] Advanced search capabilities
-- [ ] Image enhancement tools
-- [ ] Multi-language support
+## Future Considerations
+1. Advanced Features
+   - [ ] Multi-model support
+   - [ ] Custom preprocessing profiles
+   - [ ] Automated parameter optimization
 
-## Technical Debt & Maintenance
-Ongoing improvements:
-- [ ] Regular dependency updates
-- [ ] Test coverage maintenance
+2. Quality Improvements
+   - [ ] Enhanced text detection
+   - [ ] Improved handling of damaged covers
+   - [ ] Better handling of non-standard formats
+
+3. System Integration
+   - [ ] Expanded API support
+   - [ ] Enhanced batch processing
+   - [ ] Remote processing capabilities
+
+## Technical Debt
+- [ ] Refactor preprocessing pipeline for better modularity
+- [ ] Enhance error handling and recovery
+- [ ] Improve test coverage
+- [ ] Documentation maintenance
+
+## Maintenance
+- [ ] Regular performance monitoring
+- [ ] Ongoing confidence threshold adjustment
 - [ ] Documentation updates
-- [ ] Performance monitoring
-- [ ] Security reviews
+- [ ] Dependency updates
 
-## Long-term Goals
-Future considerations:
-- Cloud storage integration
-- Mobile companion app
-- API for third-party integration
-- Plugin system for extensibility
-- Community features (shared metadata)
+## Research Areas
+1. OCR Improvements
+   - Alternative preprocessing techniques
+   - Advanced confidence scoring methods
+   - Multi-model ensemble approaches
+
+2. Performance Optimization
+   - Parallel processing strategies
+   - Memory optimization techniques
+   - Caching strategies
+
+3. User Experience
+   - Confidence visualization methods
+   - Progress reporting improvements
+   - Error handling patterns

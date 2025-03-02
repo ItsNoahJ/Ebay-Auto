@@ -23,9 +23,7 @@ class VHSVision:
         target_pixel_count: int = 307200,  # Equivalent to 640x480
         save_debug: bool = True
     ):
-        """
-        Initialize vision processor.
-        """
+        """Initialize vision processor."""
         self.model = model
         self.host = host.rstrip('/')
         self.target_pixel_count = target_pixel_count
@@ -36,23 +34,46 @@ class VHSVision:
         try:
             response = requests.get(f"{self.host}/v1/models", timeout=5)
             if response.status_code == 200:
-                print("Successfully connected to LM Studio")
-                # Try to get available models
                 try:
                     models = response.json()
                     if models and isinstance(models, list) and len(models) > 0:
-                        self.model = models[0]["id"]  # Use first available model
-                except Exception:
-                    pass  # Keep default model if parsing fails
+                        model_info = models[0]
+                        self.model = model_info.get("name", model_info["id"])  # Use name if available, fallback to ID
+                        print(f"Successfully connected to LM Studio")
+                        print(f"Using model: {self.model}")
+                    else:
+                        print("\nWarning: No models available in LM Studio")
+                        print("Please load a model in LM Studio and try again")
+                        print("Status: Connected but no model loaded")
+                except Exception as e:
+                    print("\nError: Failed to parse models list from LM Studio")
+                    print(f"Error details: {str(e)}")
+                    print("Status: Connected but model info unavailable")
             else:
-                print("\nWarning: LM Studio connection issues")
-                print("Status code:", response.status_code)
+                print("\nError: LM Studio API returned unexpected status")
+                print(f"Status code: {response.status_code}")
+                print("Please verify:")
+                print("1. LM Studio is running and accessible")
+                print("2. API endpoint is correct:", self.host)
+                if response.status_code == 404:
+                    print("3. This appears to be an API endpoint issue")
+                    print("   Make sure LM Studio's API is enabled and the port is correct")
         except requests.RequestException as e:
-            print("\nError: Could not connect to LM Studio")
-            print("1. Make sure LM Studio is running")
-            print("2. Verify the host address is correct")
-            print("3. Check if the model is loaded")
-            print(f"\nDetailed error: {str(e)}")
+            print("\nError: Could not establish connection to LM Studio")
+            print("Status: Connection failed")
+            print("\nTroubleshooting steps:")
+            print("1. Verify LM Studio is running")
+            print("2. Check host address:", self.host)
+            print("3. Ensure a model is loaded")
+            if isinstance(e, requests.ConnectionError):
+                print("\nDiagnosis: Connection refused")
+                print("This usually means LM Studio is not running")
+                print("Action: Start LM Studio and try again")
+            elif isinstance(e, requests.Timeout):
+                print("\nDiagnosis: Connection timed out")
+                print("This could mean LM Studio is busy or unresponsive")
+                print("Action: Restart LM Studio if the issue persists")
+            print(f"\nTechnical details: {str(e)}")
 
     def _calculate_target_size(self, h: int, w: int) -> Tuple[int, int]:
         """Calculate adaptive target size based on input resolution."""
@@ -166,16 +187,7 @@ class VHSVision:
         image: np.ndarray,
         info_type: str = "title"
     ) -> Dict[str, any]:
-        """
-        Extract specific information from VHS cover image.
-        
-        Args:
-            image: Original image
-            info_type: Type of information to extract ("title", "year", "runtime")
-            
-        Returns:
-            dict containing extracted info, confidence score, and method used
-        """
+        """Extract specific information from VHS cover image."""
         # Enhanced preprocessing
         processed_image = self.preprocess_image(image)
         self.save_debug_image(processed_image, info_type)
@@ -235,143 +247,172 @@ class VHSVision:
             }
             
         except requests.RequestException as e:
-            error_msg = []
-            error_msg.append("LM Studio API error:")
-            error_msg.append(str(e))
-            
-            if isinstance(e, requests.Timeout):
-                error_msg.append("\nRequest timed out. Possible causes:")
-                error_msg.append("1. LM Studio is busy processing")
-                error_msg.append("2. Image size might be too large")
-                error_msg.append("3. Model might be too slow")
-            elif isinstance(e, requests.ConnectionError):
-                error_msg.append("\nConnection failed. Please verify:")
-                error_msg.append("1. LM Studio is running")
-                error_msg.append("2. The host address is correct")
-                error_msg.append("3. No firewall is blocking the connection")
+            error_msg = [
+                "LM Studio Vision API Error",
+                "=" * 50,
+                f"Operation: Extracting {info_type}",
+                f"Model: {self.model}",
+                f"Endpoint: {self.host}/v1/chat/completions",
+                f"Status: Failed",
+                "-" * 30
+            ]
             
             if hasattr(e, 'response') and e.response:
-                if e.response.status_code == 404:
-                    error_msg.append("\nAPI endpoint not found:")
-                    error_msg.append("1. Check if model is loaded in LM Studio")
-                    error_msg.append("2. Verify API endpoint is correct")
+                status_code = e.response.status_code
+                error_msg.extend([
+                    "API Response Details:",
+                    f"Status Code: {status_code}"
+                ])
+                
+                if status_code == 404:
+                    error_msg.extend([
+                        "\nDiagnosis: API endpoint or model not found",
+                        "This usually means:",
+                        "• LM Studio is not properly initialized",
+                        "• No model is currently loaded",
+                        "\nRecommended actions:",
+                        "1. Open LM Studio and load a model",
+                        "2. Check API settings:",
+                        f"   - API URL: {self.host}",
+                        "   - API enabled: Yes",
+                        "3. Try:",
+                        "   - Restart LM Studio",
+                        "   - Load a different model"
+                    ])
+                elif status_code == 500:
+                    error_msg.extend([
+                        "\nDiagnosis: Server error",
+                        "This usually means:",
+                        "• The model encountered an error",
+                        "• LM Studio may be out of memory",
+                        "\nRecommended actions:",
+                        "1. Restart LM Studio",
+                        "2. Try a different model",
+                        "3. Check system resources"
+                    ])
+                
                 if hasattr(e.response, 'text'):
-                    error_msg.append(f"\nServer response: {e.response.text}")
+                    error_msg.extend(["", "Server Response:", e.response.text])
+                    
+            elif isinstance(e, requests.Timeout):
+                error_msg.extend([
+                    "\nDiagnosis: Request timed out",
+                    "This usually means:",
+                    "• Model is taking too long to process",
+                    "• System resources are constrained",
+                    "\nRecommended actions:",
+                    "1. Check CPU/Memory usage",
+                    "2. Consider a faster model",
+                    "3. Increase timeout duration"
+                ])
+                
+            elif isinstance(e, requests.ConnectionError):
+                error_msg.extend([
+                    "\nDiagnosis: Connection failed",
+                    "This usually means:",
+                    "• LM Studio is not running",
+                    "• Wrong port or host",
+                    "\nRecommended actions:",
+                    "1. Start LM Studio",
+                    f"2. Verify {self.host} is accessible"
+                ])
             
-            print('\n'.join(error_msg))
+            error_msg.append("-" * 30)
+            error_msg.append(f"Technical Details: {str(e)}")
+            error_msg.append("=" * 50)
+            
+            # Format error message to avoid duplication
+            formatted_error = '\n'.join(error_msg)
+            print(formatted_error)
+            
             return {
                 'text': "",
                 'confidence': 0.0,
                 'method': self.model,
-                'error': '\n'.join(error_msg)
+                'error': formatted_error
             }
-    
+            
     def _clean_response(self, text: str, info_type: str) -> str:
-        """Clean model response based on info type."""
-        # Handle special responses
-        if any(phrase in text.lower() for phrase in [
-            'unable to read', 'cannot read', 'not visible', 'no runtime',
-            'no year', "can't read", 'not clear', 'no title'
-        ]):
-            return ''
+        """Clean and validate response based on info type."""
+        import re
+        text = text.strip()
         
-        # Remove any explanatory text after newlines
-        text = text.split('\n')[0].strip()
-        
-        if info_type == "title":
-            # Take first line as main title, ignoring subtitles and additional text
-            text = text.split('\n')[0].strip()
-            # Remove any qualifying statements
-            text = text.split(', which')[0].strip()
-            text = text.split(' - ')[0].strip()
-            text = text.split(' (')[0].strip()
-            # Clean any "Presenting" or similar prefixes
-            prefixes_to_remove = ['Presenting ', 'A Film By ', 'RLJ Entertainment Presents ']
-            for prefix in prefixes_to_remove:
-                if text.startswith(prefix):
-                    text = text[len(prefix):].strip()
-        
-        elif info_type == "runtime":
-            # Handle both hour + minute and minute-only formats
-            import re
-            # Look for hour+minute pattern first
-            hour_min = re.search(r'(\d+)\s*(?:hour|hr).*?(\d+)\s*(?:minute|min)', text.lower())
-            if hour_min:
-                total_mins = int(hour_min.group(1)) * 60 + int(hour_min.group(2))
-                text = f"{total_mins} min"
-            else:
-                # Fall back to minutes-only pattern
-                mins = re.search(r'(\d+)\s*(?:minute|min)', text.lower())
-                if mins:
-                    text = f"{mins.group(1)} min"
-                
-        elif info_type == "year":
-            # Extract first 4-digit number
-            import re
-            match = re.search(r'\b(19|20)\d{2}\b', text)
-            if match:
-                text = match.group(0)
-                
-        return text
-    
-    def _estimate_confidence(self, text: str, info_type: str) -> float:
-        """
-        Estimate confidence score based on response characteristics and text validity.
-        
-        Uses stricter heuristics to validate the extracted text matches expected patterns
-        for titles, years, and runtimes.
-        """
-        if not text or text.strip() == '':
-            return 0.0
-            
-        # Start with low base confidence
-        confidence = 30.0
-        
-        # Check for garbled text indicators
-        if '<' in text or '>' in text or '|' in text or '‽' in text:
-            return 0.0
-            
         if info_type == "year":
-            # Must be exactly 4 digits between 1900-2025
-            # Less restrictive year validation - allow sci-fi years
-            if text.isdigit() and len(text) == 4:
-                year = int(text)
-                if 1900 <= year <= 2100:  # Allow future years
-                    confidence += 50.0
-                    if 1950 <= year <= 2025:  # Higher confidence for typical VHS era
-                        confidence += 20.0
-                
-        elif info_type == "runtime":
-            # Must contain digits followed by "min"
-            import re
-            if re.search(r'^\d+\s*min', text.lower()):
-                confidence += 70.0
-                
-        elif info_type == "title":
-            # Title validation:
-            # - Must contain mostly ASCII letters
-            # - Should have reasonable length
-            # - Should not have unusual character patterns
-            # Calculate ratio of valid title characters (letters, common punctuation)
-            valid_chars = lambda c: c.isascii() and (c.isalpha() or c in ' :!-.')
-            valid_ratio = sum(valid_chars(c) for c in text) / len(text) if text else 0
+            # Look for 4-digit year pattern
+            year_match = re.search(r'\b(?:19|20)\d{2}\b', text)
+            if year_match:
+                return year_match.group(0)
+            return ""
             
-            min_word_length = 2
-            if (len(text) >= min_word_length and len(text) <= 100 and  # Reasonable length
-                valid_ratio > 0.8 and                     # Mostly valid characters
-                not any(c.isdigit() for c in text)):     # No digits in title
-                confidence += 50.0  # Base boost for valid text
-                if ' ' in text:
-                    confidence += 20.0  # Extra boost for multi-word titles
-                if len(text) >= 4:  # Common for movie titles
-                    confidence += 20.0
+        elif info_type == "runtime":
+            # Format should be duration only
+            # Remove any non-runtime text
+            text = re.sub(r'[Rr]untime:?\s*', '', text)
+            text = re.sub(r'[Dd]uration:?\s*', '', text)
+            text = text.strip()
+            return text
+            
+        else:  # Title
+            # Remove common prefixes
+            text = re.sub(r'^[Tt]itle:?\s*', '', text)
+            text = re.sub(r'^[Tt]he [Mm]ovie:?\s*', '', text)
+            text = text.strip()
+            return text
+
+    def is_high_confidence(self, result: Dict[str, any], threshold: float = 0.7) -> bool:
+        """Check if extraction result has high confidence.
         
-        return min(max(confidence, 0.0), 100.0)
-    
-    def is_high_confidence(
-        self,
-        result: Dict[str, any],
-        threshold: float = 70.0
-    ) -> bool:
-        """Check if OCR result meets confidence threshold."""
-        return result['confidence'] >= threshold
+        Args:
+            result: Dictionary containing extraction result with 'confidence' key
+            threshold: Minimum confidence score to be considered high confidence (0.0-1.0)
+            
+        Returns:
+            bool indicating if confidence meets threshold
+        """
+        if 'confidence' not in result:
+            return False
+            
+        # Convert from percentage (0-100) to decimal (0.0-1.0) if needed
+        confidence = result['confidence']
+        if confidence > 1.0:
+            confidence = confidence / 100.0
+            
+        return confidence >= threshold
+            
+    def _estimate_confidence(self, text: str, info_type: str) -> float:
+        """Estimate confidence score (0.0-1.0) for extracted info."""
+        import re
+        if not text:
+            return 0.0
+            
+        confidence = 0.0
+        
+        if info_type == "year":
+            # High confidence if valid 4-digit year
+            if re.match(r'^(?:19|20)\d{2}$', text):
+                confidence = 0.9
+                if 1970 <= int(text) <= 2020:  # Likely VHS era
+                    confidence += 0.1
+                    
+        elif info_type == "runtime":
+            # Check for time patterns (e.g. "90 minutes", "1h 30m")
+            if re.search(r'\d+\s*(?:hour|hr|h|minute|min|m)s?', text, re.I):
+                confidence = 0.8
+                if re.search(r'\d+\s*(?:hour|hr|h).*\d+\s*(?:minute|min|m)', text, re.I):
+                    confidence += 0.2  # Extra confidence for complete HH:MM format
+                    
+        else:  # Title
+            # Basic sanity checks for title
+            words = len([w for w in text.split() if w.strip()])  # Count non-empty words
+            if words > 6:  # Stricter length check
+                confidence = 0.3  # Heavy penalty for long titles
+                penalty = min((words - 6) * 0.1, 0.2)  # Additional penalty for each word over 6
+                confidence = max(0.1, confidence - penalty)
+            elif 1 <= words <= 8:  # Reasonable title length
+                confidence = 0.7
+                if re.match(r'^[A-Z0-9]', text):  # Starts with capital letter or number
+                    confidence += 0.2
+                if re.search(r'[\.!?]$', text):  # No trailing punctuation
+                    confidence -= 0.1
+                    
+        return min(1.0, max(0.0, confidence))  # Ensure 0.0-1.0 range
