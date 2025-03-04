@@ -3,7 +3,7 @@ OpenCV utility functions.
 """
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import cv2
 import numpy as np
@@ -31,46 +31,32 @@ def load_image(path: str) -> Optional[np.ndarray]:
         logger.error(f"Error loading image {path}: {e}")
         return None
 
-def preprocess_image(image: np.ndarray) -> np.ndarray:
-    """
-    Preprocess image for text extraction.
-    
-    Args:
-        image: Input image array
-        
-    Returns:
-        Preprocessed image array
-    """
+def convert_to_grayscale(image: np.ndarray) -> np.ndarray:
+    """Convert image to grayscale if needed."""
     try:
-        # Convert to grayscale if needed
         if len(image.shape) == 3:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         else:
             gray = image.copy()
-            
-        # Apply CLAHE for adaptive contrast
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-        contrast_enhanced = clahe.apply(gray)
-        
-        # Denoise
-        denoised = cv2.fastNlMeansDenoising(contrast_enhanced)
-        
-        # Adaptive threshold with original parameters
-        binary = cv2.adaptiveThreshold(
-            denoised,
-            255,
-            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY,
-            11,  # Original block size
-            2    # Original C parameter
-        )
-        
-        return binary
-        
+        return gray
     except Exception as e:
-        logger.error(f"Preprocessing error: {e}")
+        logger.error(f"Grayscale conversion error: {e}")
         return image
-
+        
+def resize_image(image: np.ndarray, target_width: int = 1024) -> np.ndarray:
+    """Resize image maintaining aspect ratio."""
+    try:
+        h, w = image.shape[:2]
+        if w > target_width:
+            ratio = target_width / w
+            new_size = (target_width, int(h * ratio))
+            resized = cv2.resize(image, new_size)
+            return resized
+        return image
+    except Exception as e:
+        logger.error(f"Resize error: {e}")
+        return image
+        
 def enhance_contrast(image: np.ndarray) -> np.ndarray:
     """
     Enhance image contrast using CLAHE.
@@ -85,11 +71,98 @@ def enhance_contrast(image: np.ndarray) -> np.ndarray:
         # Apply CLAHE
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
         enhanced = clahe.apply(image)
-        
         return enhanced
-        
     except Exception as e:
         logger.error(f"Contrast enhancement error: {e}")
+        return image
+
+def denoise_image(image: np.ndarray) -> np.ndarray:
+    """
+    Apply multi-stage denoising to image.
+    
+    Args:
+        image: Input grayscale or color image
+        
+    Returns:
+        Denoised image
+    """
+    try:
+        # Ensure uint8 type
+        if image.dtype != np.uint8:
+            image = cv2.convertScaleAbs(image)
+        
+        # First pass: Mild bilateral filtering for edge preservation
+        bilateral = cv2.bilateralFilter(image, d=5, sigmaColor=25, sigmaSpace=25)
+        
+        # Second pass: Non-local means for fine detail preservation
+        if len(image.shape) == 2:
+            # For grayscale images
+            # Use moderate h value and small windows for detail preservation
+            denoised = cv2.fastNlMeansDenoising(
+                bilateral,
+                None,
+                h=7,  # Moderate strength
+                templateWindowSize=5,  # Small template for detail
+                searchWindowSize=15  # Moderate search area
+            )
+        else:
+            # For color images
+            # Use different strengths for luminance and color
+            denoised = cv2.fastNlMeansDenoisingColored(
+                bilateral,
+                None,
+                h=7,  # Luminance filtering
+                hColor=10,  # Color filtering
+                templateWindowSize=5,
+                searchWindowSize=15
+            )
+            
+        # Final pass: Light gaussian blur to smooth any remaining artifacts
+        # but only if the image has high frequency noise
+        if np.std(denoised) > np.std(bilateral):
+            denoised = cv2.GaussianBlur(denoised, (3,3), 0.5)
+            
+        return denoised
+    except Exception as e:
+        logger.error(f"Denoising error: {e}")
+        return image
+
+def preprocess_image(image: np.ndarray) -> np.ndarray:
+    """
+    Preprocess image optimized for text extraction.
+    
+    Args:
+        image: Input image array
+        
+    Returns:
+        Preprocessed image array optimized for OCR
+    """
+    try:
+        # Convert to grayscale
+        gray = convert_to_grayscale(image)
+        
+        # Resize while maintaining text readability
+        resized = resize_image(gray, target_width=1600)  # Higher resolution for better text detail
+        
+        # Initial denoising to clean up the image
+        denoised = denoise_image(resized)
+        
+        # Enhance local contrast for better text definition
+        enhanced = enhance_contrast(denoised)
+        
+        # Normalize image statistics for consistent processing
+        normalized = normalize_image(enhanced, target_mean=127, target_std=40)
+        
+        # Second pass of targeted denoising with text preservation
+        if np.std(normalized) > 45:  # Only if image is still noisy
+            final = cv2.bilateralFilter(normalized, d=5, sigmaColor=10, sigmaSpace=10)
+        else:
+            final = normalized
+            
+        return final
+        
+    except Exception as e:
+        logger.error(f"Preprocessing error: {e}")
         return image
 
 def normalize_image(image: np.ndarray, target_mean: float = 127, target_std: float = 50) -> np.ndarray:

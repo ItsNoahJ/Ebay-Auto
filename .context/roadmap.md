@@ -1,89 +1,71 @@
 # Project Roadmap
 
 ## Recently Completed
-- [x] Enhanced vision processing confidence calculation
-  - [x] Progressive word count penalties
-  - [x] Optimized title length validation
-  - [x] Improved confidence modifiers
-- [x] Updated preprocessing pipeline
-  - [x] Adaptive image sizing
-  - [x] CLAHE optimization
-  - [x] Enhanced text clarity
-- [x] Added comprehensive testing
-  - [x] Integration tests
-  - [x] Confidence calculation tests
-  - [x] GUI response tests
-- [x] Added detailed documentation
-  - [x] Vision processing documentation
-  - [x] Updated changelog
-  - [x] Test coverage documentation
+- [x] Enhanced testing infrastructure
+  - [x] Comprehensive mock data structures
+  - [x] Integration test coverage
+  - [x] Error handling validation
+- [x] Improved coordinator implementation
+  - [x] Better error handling
+  - [x] Proper response validation
+  - [x] Fallback mechanisms
 
-## Current Sprint
-- [ ] Monitor and validate confidence scoring improvements
-  - [ ] Gather metrics on accuracy vs. speed
-  - [ ] Analyze error patterns
-  - [ ] Fine-tune thresholds based on real-world usage
-- [ ] Integration refinements
-  - [ ] Optimize background processing
-  - [ ] Enhance error reporting
-  - [ ] Improve progress indicators
+## Current Sprint (Non-LM Studio Focus)
+1. UI Enhancements
+   - [ ] Add ProcessingStatusWidget
+     - [ ] Progress bars for preprocessing stages
+     - [ ] Time elapsed tracking
+     - [ ] Memory usage monitoring
+   - [ ] Enhance Results View
+     - [ ] Color-coded confidence indicators
+     - [ ] Detailed error messaging
+     - [ ] Visual preprocessing comparisons
+
+2. Preprocessing Optimization
+   - [ ] Improve image preprocessing efficiency
+   - [ ] Add configuration options for CLAHE
+   - [ ] Implement preprocessing caching
+   - [ ] Support batch preprocessing
+
+3. Testing Extensions
+   - [ ] Expand preprocessing test coverage
+   - [ ] Add image operation benchmarks
+   - [ ] Create diverse test fixtures
+   - [ ] Enhance mock variety
 
 ## Near-term Goals
-1. Performance Optimization
-   - [ ] Batch processing capabilities
-   - [ ] Caching for repeated operations
+1. Performance
    - [ ] Memory usage optimization
+   - [ ] Caching system implementation
+   - [ ] Background processing improvements
 
-2. UI Enhancements
-   - [ ] Visual confidence indicators
-   - [ ] Detailed processing status
-   - [ ] Advanced error visualization
+2. Error Handling
+   - [ ] Enhanced error visualization
+   - [ ] Recovery suggestions
+   - [ ] Detailed logging system
 
-3. Processing Pipeline
-   - [ ] Additional preprocessing options
-   - [ ] Custom confidence thresholds
-   - [ ] Enhanced API fallback logic
+3. Quality Assurance
+   - [ ] Automated testing expansion
+   - [ ] Performance benchmarking
+   - [ ] Error pattern analysis
 
 ## Future Considerations
 1. Advanced Features
-   - [ ] Multi-model support
    - [ ] Custom preprocessing profiles
-   - [ ] Automated parameter optimization
+   - [ ] Batch processing optimization
+   - [ ] Alternative OCR integrations
 
-2. Quality Improvements
-   - [ ] Enhanced text detection
-   - [ ] Improved handling of damaged covers
-   - [ ] Better handling of non-standard formats
-
-3. System Integration
-   - [ ] Expanded API support
-   - [ ] Enhanced batch processing
+2. System Integration
+   - [ ] Enhanced API support
    - [ ] Remote processing capabilities
+   - [ ] Extended format support
 
 ## Technical Debt
-- [ ] Refactor preprocessing pipeline for better modularity
-- [ ] Enhance error handling and recovery
-- [ ] Improve test coverage
-- [ ] Documentation maintenance
+- [ ] Refactor preprocessing pipeline
+- [ ] Improve error recovery
+- [ ] Documentation updates
 
 ## Maintenance
 - [ ] Regular performance monitoring
-- [ ] Ongoing confidence threshold adjustment
-- [ ] Documentation updates
+- [ ] Documentation maintenance
 - [ ] Dependency updates
-
-## Research Areas
-1. OCR Improvements
-   - Alternative preprocessing techniques
-   - Advanced confidence scoring methods
-   - Multi-model ensemble approaches
-
-2. Performance Optimization
-   - Parallel processing strategies
-   - Memory optimization techniques
-   - Caching strategies
-
-3. User Experience
-   - Confidence visualization methods
-   - Progress reporting improvements
-   - Error handling patterns

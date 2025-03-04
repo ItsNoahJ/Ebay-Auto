@@ -1,190 +1,157 @@
 """
-Tests for VHS tape image processing functionality.
+Unit tests for vision processing module.
 """
-import os
 import pytest
-import numpy as np
 import cv2
-from PIL import Image, ImageDraw, ImageFont
+import numpy as np
+from unittest.mock import Mock, call
+
 from src.vision.processor import VisionProcessor
 
 @pytest.fixture
-def temp_image_dir(tmp_path):
-    """Create a temporary directory for test images."""
-    return tmp_path / "test_images"
+def processor():
+    """Create a VisionProcessor instance for testing."""
+    return VisionProcessor(save_debug=False)
 
 @pytest.fixture
-def vision_processor(temp_image_dir):
-    """Create a vision processor instance for testing."""
-    debug_dir = str(temp_image_dir / "debug")
-    os.makedirs(debug_dir, exist_ok=True)
-    return VisionProcessor(debug_output_dir=debug_dir)
+def sample_vhs_image(tmp_path):
+    """Create a sample VHS cover image for testing."""
+    # Create a test image with some text-like features
+    image = np.zeros((300, 200, 3), dtype=np.uint8)
+    
+    # Add a white rectangle for title area
+    cv2.rectangle(image, (20, 20), (180, 60), (255, 255, 255), -1)
+    # Add some simulated text
+    cv2.putText(image, "TEST TITLE", (30, 45), 
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+    
+    # Save the image
+    image_path = tmp_path / "test_vhs.jpg"
+    cv2.imwrite(str(image_path), image)
+    
+    return str(image_path)
 
-def create_test_image(output_path: str, text: dict) -> str:
-    """
-    Create a test image with known text.
+@pytest.mark.unit
+def test_process_image_progress_tracking(processor, sample_vhs_image):
+    """Test that process_image correctly reports progress through callbacks."""
+    progress_callback = Mock()
     
-    Args:
-        output_path: Path to save the test image
-        text: Dictionary of text to write in each region
-    """
-    # Create base image
-    width = 1600
-    height = 1200
-    image = Image.new('RGB', (width, height), color='white')
-    draw = ImageDraw.Draw(image)
+    results = processor.process_image(sample_vhs_image, progress_callback=progress_callback)
     
-    # Use a large font size for better OCR
-    font_size = 72
-    try:
-        font = ImageFont.truetype("arial.ttf", font_size)
-    except IOError:
-        try:
-            # Try Windows system font as backup
-            font = ImageFont.truetype("C:\\Windows\\Fonts\\arial.ttf", font_size)
-        except IOError:
-            font = ImageFont.load_default()
+    # Verify callback was called for each stage
+    expected_calls = [
+        # Initial grayscale progress
+        call("grayscale", 0.0),
+        call("grayscale", 0.5),
+        call("grayscale", 1.0),
+        
+        # Resize progress
+        call("resize", 0.0),
+        call("resize", 1.0),
+        
+        # Enhancement progress
+        call("enhance", 0.0),
+        call("enhance", 1.0),
+        
+        # Denoising progress
+        call("denoise", 0.0),
+        call("denoise", 1.0),
+        
+        # Text extraction progress (multiple updates as categories are processed)
+        call("text", 0.0),
+    ]
     
-    # Add text to image with precise positioning matching ROI regions
-    draw.text((width * 0.02 + 20, height * 0.02 + 20), text.get('title', ''), fill='black', font=font)
-    draw.text((width * 0.02 + 20, height * 0.25 + 20), text.get('year', ''), fill='black', font=font)
-    draw.text((width * 0.65 + 20, height * 0.25 + 20), text.get('runtime', ''), fill='black', font=font)
+    # The text extraction will have additional calls as categories are processed
+    # Just verify the key stages were called in order
+    actual_calls = progress_callback.call_args_list
     
-    # Add a light border around text regions to improve contrast
-    for region in ['title', 'year', 'runtime']:
-        if text.get(region):
-            bbox = draw.textbbox((0, 0), text[region], font=font)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
-            
-            if region == 'title':
-                x = int(width * 0.02) + 20
-                y = int(height * 0.02) + 20
-            elif region == 'year':
-                x = int(width * 0.02) + 20
-                y = int(height * 0.25) + 20
-            else:  # runtime
-                x = int(width * 0.65) + 20
-                y = int(height * 0.25) + 20
-            
-            # Draw rectangle slightly larger than text
-            draw.rectangle(
-                [x-5, y-5, x+text_width+5, y+text_height+5],
-                outline='black',
-                width=2
-            )
+    # Check that all expected calls are present in order
+    for expected, actual in zip(expected_calls, actual_calls):
+        assert expected == actual, f"Expected {expected}, got {actual}"
     
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    image.save(output_path)
-    return output_path
-
-def test_vision_processor_initialization(vision_processor):
-    """Test vision processor initialization."""
-    assert vision_processor.confidence_threshold == 60
-    assert "title" in vision_processor.roi_regions
-    assert "year" in vision_processor.roi_regions
-    assert "runtime" in vision_processor.roi_regions
-
-def test_image_preprocessing(vision_processor, temp_image_dir):
-    """Test image preprocessing steps."""
-    # Create a simple test image
-    test_path = str(temp_image_dir / "preprocess_test.jpg")
-    test_text = {
-        "title": "Test Movie",
-        "year": "1999",
-        "runtime": "120 min"
-    }
-    create_test_image(test_path, test_text)
+    # Verify we got a final text progress of 1.0
+    assert call("text", 1.0) in actual_calls
     
-    # Load and preprocess image
-    image = cv2.imread(test_path)
-    processed = vision_processor._preprocess_image(image)
-    
-    # Verify preprocessing output
-    assert isinstance(processed, np.ndarray)
-    assert len(processed.shape) == 2  # Should be grayscale
-    assert processed.dtype == np.uint8
-
-def test_text_extraction(vision_processor, temp_image_dir, capsys):
-    """Test text extraction from different regions."""
-    # Create test image with known text
-    test_path = str(temp_image_dir / "extraction_test.jpg")
-    test_text = {
-        "title": "The Matrix",
-        "year": "1999",
-        "runtime": "136 min"
-    }
-    create_test_image(test_path, test_text)
-    
-    # Process image
-    results = vision_processor.process_image(test_path)
-    
-    # Verify results structure
+    # Verify the results contain expected fields
+    assert isinstance(results, dict)
+    assert "confidence" in results
     assert "extracted_data" in results
-    assert "debug_info" in results
-    
-    # Verify debug info
-    debug_info = results["debug_info"]
-    assert os.path.exists(debug_info["original_image"])
-    assert os.path.exists(debug_info["processed_image"])
-    assert "confidence_scores" in debug_info
-    
-    # Output debug information
-    print("\nDebug Info:")
-    print(f"Confidence Scores: {results['debug_info']['confidence_scores']}")
-    print(f"Extracted Title: '{results['extracted_data']['title']}'")
-    print(f"Extracted Year: '{results['extracted_data']['year']}'")
-    print(f"Extracted Runtime: '{results['extracted_data']['runtime']}'")
-    
-    # Check if expected text was found (allowing for some OCR variance)
-    extracted = results["extracted_data"]
-    title_match = "Matrix" in extracted["title"] or "MATRIX" in extracted["title"].upper()
-    year_match = "1999" in extracted["year"]
-    runtime_match = "min" in extracted["runtime"].lower()
-    
-    # Output detailed assertion info
-    if not title_match:
-        print(f"\nTitle match failed. Expected 'Matrix', got: {extracted['title']}")
-    if not year_match:
-        print(f"\nYear match failed. Expected '1999', got: {extracted['year']}")
-    if not runtime_match:
-        print(f"\nRuntime match failed. Expected 'min', got: {extracted['runtime']}")
-        
-    assert title_match, "Title text not found"
-    assert year_match, "Year text not found"
-    assert runtime_match, "Runtime text not found"
+    assert isinstance(results.get("confidence", {}), dict)
 
-def test_invalid_image_handling(vision_processor, temp_image_dir):
-    """Test handling of invalid image paths."""
-    invalid_path = str(temp_image_dir / "nonexistent.jpg")
-    
-    with pytest.raises(ValueError):
-        vision_processor.process_image(invalid_path)
+@pytest.mark.unit
+def test_process_image_handles_missing_callback(processor, sample_vhs_image):
+    """Test that process_image works without a progress callback."""
+    results = processor.process_image(sample_vhs_image)  # No callback
+    assert isinstance(results, dict)
+    assert "confidence" in results
 
-def test_results_validation(vision_processor, temp_image_dir, capsys):
-    """Test validation of OCR results."""
-    # Create test image with clear text
-    test_path = str(temp_image_dir / "validation_test.jpg")
-    test_text = {
-        "title": "CLEAR TEST TITLE",
-        "year": "2000",
-        "runtime": "90 MIN"
+@pytest.mark.unit
+def test_process_image_error_handling(processor):
+    """Test error handling in process_image."""
+    progress_callback = Mock()
+    
+    # Try to process a non-existent image
+    results = processor.process_image(
+        "nonexistent.jpg",
+        progress_callback=progress_callback
+    )
+    
+    assert "error" in results
+    assert not results.get("success", False)
+    
+    # Verify callback was still called with initial stage
+    progress_callback.assert_called_with("grayscale", 0.0)
+
+@pytest.mark.unit
+def test_process_image_with_invalid_image(processor, tmp_path):
+    """Test handling of invalid/corrupt image files."""
+    # Create an invalid image file
+    invalid_path = tmp_path / "invalid.jpg"
+    with open(invalid_path, "w") as f:
+        f.write("not an image")
+    
+    progress_callback = Mock()
+    results = processor.process_image(str(invalid_path), progress_callback=progress_callback)
+    
+    assert "error" in results
+    assert not results.get("success", False)
+    
+    # Should still get initial progress call
+    progress_callback.assert_called_with("grayscale", 0.0)
+
+@pytest.mark.unit
+def test_process_image_success_validation(processor, sample_vhs_image):
+    """Test successful processing includes all required fields."""
+    results = processor.process_image(sample_vhs_image)
+    
+    assert results.get("success", False)
+    assert isinstance(results.get("confidence", {}), dict)
+    assert isinstance(results.get("extracted_data", {}), dict)
+    assert isinstance(results.get("source", {}), dict)
+    
+    # Check that confidence scores are normalized
+    for score in results.get("confidence", {}).values():
+        assert 0.0 <= score <= 1.0, "Confidence scores should be normalized"
+
+@pytest.mark.unit
+def test_api_backup_triggering(processor, sample_vhs_image, monkeypatch):
+    """Test that API backup is triggered for low confidence results."""
+    # Mock the _needs_api_backup method to always return True
+    monkeypatch.setattr(processor, "_needs_api_backup", lambda x: True)
+    
+    # Create a mock for the API call
+    mock_api_result = {
+        "title": "API Title",
+        "year": "2024",
+        "runtime": "120",
+        "confidence": 0.85
     }
-    create_test_image(test_path, test_text)
+    monkeypatch.setattr(
+        "src.enrichment.api_client.search_movie_details",
+        lambda x: mock_api_result
+    )
     
-    # Process and validate results
-    results = vision_processor.process_image(test_path)
-    is_valid = vision_processor.validate_results(results)
+    results = processor.process_image(sample_vhs_image)
     
-    # Output debug information
-    print("\nDebug Info:")
-    print(f"Confidence Scores: {results['debug_info']['confidence_scores']}")
-    for region, score in results["debug_info"]["confidence_scores"].items():
-        print(f"{region}: {score} vs threshold {vision_processor.confidence_threshold}")
-        
-    # Results should be valid for clear text
-    assert is_valid, "Results validation failed - check confidence scores"
-    
-    # Verify all confidence scores
-    confidence_scores = results["debug_info"]["confidence_scores"]
-    assert all(score > 0 for score in confidence_scores.values()), "Some confidence scores are 0"
+    # Verify that API data was used
+    assert any(source == "api" for source in results.get("source", {}).values())

@@ -1,9 +1,14 @@
 """
 Custom widgets for the GUI.
 """
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QFrame, QPushButton
+from datetime import datetime
+import psutil
+from PyQt6.QtWidgets import (
+    QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame, 
+    QPushButton, QProgressBar
+)
 from PyQt6.QtGui import QColor
-from PyQt6.QtCore import Qt, pyqtSignal, QPropertyAnimation, QEasingCurve
+from PyQt6.QtCore import Qt, pyqtSignal, QPropertyAnimation, QEasingCurve, QTimer
 import requests
 
 class ConnectionStatusWidget(QWidget):
@@ -172,3 +177,182 @@ class ConnectionStatusWidget(QWidget):
                 padding: 2px;
             }
         """)
+
+class ProcessingStatusWidget(QWidget):
+    """Widget showing image processing status and progress."""
+    
+    def __init__(self, parent=None):
+        """Initialize widget."""
+        super().__init__(parent)
+        
+        # Create container frame with the same style as ConnectionStatusWidget
+        self.container = QFrame(self)
+        self.container.setObjectName("status_container")
+        self.container.setStyleSheet("""
+            QFrame#status_container {
+                background-color: rgba(0, 0, 0, 0.05);
+                border-radius: 8px;
+                padding: 8px;
+            }
+            QProgressBar {
+                border: 1px solid #CCC;
+                border-radius: 4px;
+                text-align: center;
+            }
+            QProgressBar::chunk {
+                background-color: #007BFF;
+                border-radius: 3px;
+            }
+        """)
+        
+        # Create main layout
+        layout = QVBoxLayout(self.container)
+        layout.setSpacing(8)
+        
+        # Add header section
+        header_layout = QHBoxLayout()
+        
+        # Status indicator
+        self.status_indicator = QLabel()
+        self.status_indicator.setFixedSize(12, 12)
+        self.status_indicator.setStyleSheet(
+            "QLabel { border-radius: 6px; background-color: gray; }"
+        )
+        header_layout.addWidget(self.status_indicator)
+        
+        # Status label
+        self.status_label = QLabel("Ready")
+        header_layout.addWidget(self.status_label)
+        
+        # Time elapsed
+        self.time_label = QLabel("00:00")
+        self.time_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        header_layout.addWidget(self.time_label)
+        
+        layout.addLayout(header_layout)
+        
+        # Add progress bars for each stage
+        self.stage_bars = {}
+        stages = [
+            ("grayscale", "Grayscale"),
+            ("resize", "Resize"),
+            ("enhance", "Enhance"),
+            ("denoise", "Denoise"),
+            ("text", "Text Detection")
+        ]
+        
+        for stage_id, stage_name in stages:
+            stage_layout = QVBoxLayout()
+            stage_layout.setSpacing(2)
+            
+            # Stage label with percent
+            label_layout = QHBoxLayout()
+            label = QLabel(stage_name)
+            percent = QLabel("0%")
+            label_layout.addWidget(label)
+            label_layout.addWidget(percent)
+            stage_layout.addLayout(label_layout)
+            
+            # Progress bar
+            progress = QProgressBar()
+            progress.setFixedHeight(8)
+            progress.setTextVisible(False)
+            stage_layout.addWidget(progress)
+            
+            layout.addLayout(stage_layout)
+            
+            # Store references
+            self.stage_bars[stage_id] = {
+                "progress": progress,
+                "percent": percent
+            }
+        
+        # Add memory usage
+        memory_layout = QHBoxLayout()
+        memory_layout.addWidget(QLabel("Memory:"))
+        self.memory_label = QLabel("0 MB")
+        self.memory_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        memory_layout.addWidget(self.memory_label)
+        layout.addLayout(memory_layout)
+        
+        # Setup main widget layout
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.addWidget(self.container)
+        
+        # Initialize timer for elapsed time updates
+        self.start_time = None
+        self.timer = QTimer()
+        self.timer.timeout.connect(self._update_elapsed_time)
+        
+        # Initialize state
+        self.reset()
+        
+    def reset(self):
+        """Reset all progress and status indicators."""
+        self._update_status("ready")
+        self.start_time = None
+        self.timer.stop()
+        self.time_label.setText("00:00")
+        
+        for stage_data in self.stage_bars.values():
+            stage_data["progress"].setValue(0)
+            stage_data["percent"].setText("0%")
+            
+        self._update_memory_usage()
+        
+    def start_processing(self):
+        """Start processing state and timer."""
+        self._update_status("processing")
+        self.start_time = datetime.now()
+        self.timer.start(1000)  # Update every second
+        
+    def update_stage(self, stage_id: str, progress: float):
+        """Update progress for a specific stage."""
+        if stage_id in self.stage_bars:
+            percent = int(progress * 100)
+            self.stage_bars[stage_id]["progress"].setValue(percent)
+            self.stage_bars[stage_id]["percent"].setText(f"{percent}%")
+            self._update_memory_usage()
+            
+    def finish_processing(self, success: bool = True):
+        """Complete processing and show final status."""
+        self.timer.stop()
+        self._update_status("success" if success else "error")
+        self._update_memory_usage()
+        
+    def _update_status(self, status: str):
+        """Update status indicator and label."""
+        status_colors = {
+            "ready": QColor(128, 128, 128),      # Gray
+            "processing": QColor(0, 120, 255),    # Blue
+            "success": QColor(0, 255, 0),         # Green
+            "error": QColor(255, 0, 0)           # Red
+        }
+        
+        status_texts = {
+            "ready": "Ready",
+            "processing": "Processing...",
+            "success": "Complete",
+            "error": "Error"
+        }
+        
+        color = status_colors.get(status, QColor(128, 128, 128))
+        self.status_indicator.setStyleSheet(
+            f"QLabel {{ border-radius: 6px; background-color: {color.name()}; }}"
+        )
+        self.status_label.setText(status_texts.get(status, "Ready"))
+        
+    def _update_elapsed_time(self):
+        """Update the elapsed time display."""
+        if self.start_time:
+            elapsed = datetime.now() - self.start_time
+            minutes = int(elapsed.total_seconds() // 60)
+            seconds = int(elapsed.total_seconds() % 60)
+            self.time_label.setText(f"{minutes:02d}:{seconds:02d}")
+            
+    def _update_memory_usage(self):
+        """Update the memory usage display."""
+        process = psutil.Process()
+        memory_mb = process.memory_info().rss / 1024 / 1024
+        self.memory_label.setText(f"{memory_mb:.1f} MB")

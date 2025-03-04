@@ -3,7 +3,7 @@ VHS image processing module.
 """
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Callable
 
 import cv2
 import numpy as np
@@ -38,39 +38,67 @@ class VisionProcessor:
         if not self.discogs_available:
             logger.warning("Discogs API not available - will rely on vision only")
             
-    def process_image(self, image_path: str) -> Dict[str, Any]:
+    def process_image(self, image_path: str, progress_callback: Optional[Callable[[str, float], None]] = None) -> Dict[str, Any]:
         """
         Process image and extract media information.
         
         Args:
             image_path: Path to image file
+            progress_callback: Optional callback function for progress updates
             
         Returns:
             Dictionary with extracted info and confidence scores
         """
         logger.info(f"Processing image: {image_path}")
         
+        def update_progress(stage: str, progress: float):
+            """Helper to update progress if callback exists."""
+            if progress_callback:
+                progress_callback(stage, progress)
+        
         # Load image
+        update_progress("grayscale", 0.0)
         image = opencv_utils.load_image(image_path)
         if image is None:
             return self._create_error_result("Failed to load image")
+        update_progress("grayscale", 0.5)
             
         try:
-            # Preprocess image
-            processed = opencv_utils.preprocess_image(image)
+            # Convert to grayscale first
+            grayscale = opencv_utils.convert_to_grayscale(image)
+            update_progress("grayscale", 1.0)
+            
+            # Resize image
+            update_progress("resize", 0.0)
+            resized = opencv_utils.resize_image(grayscale)
+            update_progress("resize", 1.0)
+            
+            # Enhance contrast
+            update_progress("enhance", 0.0)
+            enhanced = opencv_utils.enhance_contrast(resized)
+            update_progress("enhance", 1.0)
+            
+            # Denoise
+            update_progress("denoise", 0.0)
+            denoised = opencv_utils.denoise_image(enhanced)
+            update_progress("denoise", 1.0)
+            
+            # Text detection and extraction
+            update_progress("text", 0.0)
             if self.save_debug:
-                self.vision.save_debug_image(processed, "preprocessed")
+                self.vision.save_debug_image(denoised, "preprocessed")
                 
-            # Extract info categories
+            # Extract info categories with progress updates
             categories = ["title", "year", "runtime", "studio", "director", "cast", "rating"]
+            total_categories = len(categories)
             
             # Extract info with confidence scores
             extracted_data = {}
             confidence_scores = {}
             
-            for category in categories:
+            for idx, category in enumerate(categories):
                 try:
-                    result = self.vision.extract_info(processed, category)
+                    result = self.vision.extract_info(denoised, category)
                     text = result.get("text", "")
                     # Ensure confidence is in decimal form (0.0-1.0)
                     confidence = float(result.get("confidence", 0.0))
@@ -83,6 +111,8 @@ class VisionProcessor:
                     logger.error(f"Error extracting {category}: {e}")
                     extracted_data[category] = ""
                     confidence_scores[category] = 0.0
+                    
+                update_progress("text", (idx + 1) / total_categories)
             
             # Build base result
             vision_result = {
@@ -92,17 +122,20 @@ class VisionProcessor:
                 "source": {
                     category: "vision"
                     for category in categories
-                }
+                },
+                "success": True  # Indicate successful processing
             }
             
             # Check if we need API backup for any low confidence results
-            if self.tmdb_available and self._needs_api_backup(vision_result):
-                api_result = search_movie_details(vision_result["title"])
-                
-                # Update low confidence fields with API data
-                vision_result.update(
-                    self._merge_api_results(vision_result, api_result)
-                )
+            try:
+                if self.tmdb_available and self._needs_api_backup(vision_result):
+                    api_result = search_movie_details(vision_result["title"])
+                    if api_result:
+                        # Update low confidence fields with API data
+                        vision_result = self._merge_api_results(vision_result, api_result)
+            except Exception as e:
+                logger.error(f"API backup error: {e}")
+                # Continue with vision results on API error
                 
             return vision_result
             
@@ -110,7 +143,7 @@ class VisionProcessor:
             logger.error(f"Processing error: {e}")
             return self._create_error_result(str(e))
             
-    def _needs_api_backup(self, result: Dict[str, Any], threshold: float = 70.0) -> bool:
+    def _needs_api_backup(self, result: Dict[str, Any], threshold: float = 0.7) -> bool:
         """Check if any field needs API backup based on confidence."""
         return any(
             conf < threshold 
@@ -118,23 +151,45 @@ class VisionProcessor:
         )
         
     def _merge_api_results(self, vision_result: Dict[str, Any], api_result: Dict[str, Any]) -> Dict[str, Any]:
-        """Merge API results for low confidence fields."""
+        """
+        Merge API results for low confidence fields.
+        
+        Args:
+            vision_result: Original results from vision processing
+            api_result: Results from API lookup
+            
+        Returns:
+            Updated results dictionary with API data merged in
+        """
         merged = vision_result.copy()
+        confidence_threshold = 0.7
         
-        # Only update fields where vision confidence is low
-        confidence_threshold = 70.0
+        # Ensure api_result fields match our expected format
+        api_data = {
+            "title": str(api_result.get("title", "")),
+            "year": str(api_result.get("year", "")),
+            "runtime": str(api_result.get("runtime", "")),
+            "studio": str(api_result.get("studio", "")),
+            "director": str(api_result.get("director", "")),
+            "cast": str(api_result.get("cast", ""))
+        }
         
-        # Base fields that can come from TMDB
-        base_fields = ["title", "year", "runtime"]
-        # Additional fields that might be available from TMDB
-        extra_fields = ["studio", "director", "cast"]
-        
-        for field in base_fields + extra_fields:
-            if (vision_result["confidence"][field] < confidence_threshold 
-                and api_result.get(field)):
-                merged[field] = api_result[field]
-                merged["confidence"][field] = 85.0  # Standard API confidence
-                merged["source"][field] = "api"
+        # First verify any fields exist in API result
+        if not any(api_data.values()):
+            logger.warning("No valid data found in API result")
+            return merged
+            
+        # Update fields from API if they meet criteria
+        for field, api_value in api_data.items():
+            if api_value and (
+                field not in vision_result or
+                not vision_result[field] or
+                vision_result["confidence"].get(field, 0) < confidence_threshold
+            ):
+                logger.debug(f"Updating {field} from API: {api_value}")
+                merged[field] = api_value
+                merged["confidence"][field] = 0.85
+                merged["source"][field] = "api"  # Explicitly mark source as API
                 
         return merged
             
@@ -146,7 +201,8 @@ class VisionProcessor:
         } | {
             "confidence": {category: 0 for category in categories},
             "source": {category: "none" for category in categories},
-            "error": error
+            "error": error,
+            "success": False
         }
         
     def validate_results(self, results: Dict[str, Any]) -> bool:

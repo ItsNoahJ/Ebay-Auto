@@ -6,6 +6,8 @@ import json
 import logging
 import os
 from pathlib import Path
+from typing import Optional, Callable, Dict, Any
+
 import cv2
 
 from ..vision.processor import VisionProcessor
@@ -27,19 +29,31 @@ class ProcessingCoordinator:
         # Initialize vision processor with debug output enabled
         self.vision_processor = VisionProcessor(save_debug=True)
         
-    def process_tape(self, image_path: str, media_type: str = "MOVIE", debug: bool = False) -> dict:
+    def process_tape(
+        self,
+        image_path: str,
+        media_type: str = "MOVIE",
+        debug: bool = False,
+        progress_callback: Optional[Callable[[str, float], None]] = None
+    ) -> Dict[str, Any]:
         """
         Process a media cover image.
         
         Args:
             image_path: Path to image file
             media_type: Type of media (MOVIE, CD, VINYL, CASSETTE)
-            debug: Enable debug visualization (unused, debug is set in processor init)
+            debug: Enable debug visualization
+            progress_callback: Optional callback for progress updates
             
         Returns:
             Dict containing processing results
         """
         logger.info(f"Processing {image_path}")
+        
+        def update_progress(stage: str, progress: float):
+            """Helper to update progress if callback exists."""
+            if progress_callback:
+                progress_callback(stage, progress)
         
         # Initialize results
         results = {
@@ -61,8 +75,11 @@ class ProcessingCoordinator:
                 results["error"] = f"Image not found: {image_path}"
                 return results
                 
-            # Process image with vision model
-            vision_results = self.vision_processor.process_image(image_path)
+            # Process image with vision model (this will handle preprocessing progress)
+            vision_results = self.vision_processor.process_image(
+                image_path,
+                progress_callback=progress_callback
+            )
             
             # Update results with vision data and status
             results["vision_data"] = vision_results.get("vision_data", {})
@@ -72,6 +89,9 @@ class ProcessingCoordinator:
             if "error" in vision_results:
                 results["error"] = vision_results["error"]
                 return results
+            
+            # Start text extraction progress
+            update_progress("text", 0.0)
                 
             # Extract title from vision results if available
             if "vision_data" in vision_results:
@@ -79,11 +99,18 @@ class ProcessingCoordinator:
                 if title:
                     results["extracted_titles"] = vision_results.get("extracted_titles", [title])
                     
+                    # Update progress before API enrichment
+                    update_progress("text", 0.8)
+                    
                     # Enrich with metadata based on media type
                     if media_type == "MOVIE":
+                        update_progress("text", 0.9)
                         results["movie_data"] = search_movie_details(title)
                     elif media_type in ["CD", "VINYL", "CASSETTE"]:
+                        update_progress("text", 0.9)
                         results["audio_data"] = search_audio_details(title, media_type)
+                    
+                    update_progress("text", 1.0)
             
             # Save results if successful
             if results["success"]:
@@ -129,3 +156,36 @@ class ProcessingCoordinator:
             json.dump(clean_results, f, indent=2)
             
         return results_path
+        
+    def validate_results(self, results: Dict[str, Any]) -> bool:
+        """
+        Validate processing results.
+        
+        Args:
+            results: Results dictionary from process_tape()
+            
+        Returns:
+            True if results are valid, False otherwise
+        """
+        if not isinstance(results, dict):
+            logger.error("Results is not a dictionary")
+            return False
+            
+        required_fields = [
+            "title", "year", "runtime", "studio", 
+            "director", "cast", "rating",
+            "confidence", "source"
+        ]
+        
+        for field in required_fields:
+            if field not in results:
+                logger.error(f"Missing required field: {field}")
+                return False
+                
+        # At least one field should have non-zero confidence
+        confidence = results["confidence"]
+        if not any(conf > 0 for conf in confidence.values()):
+            logger.error("No fields extracted with confidence")
+            return False
+            
+        return True

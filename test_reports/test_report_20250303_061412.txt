@@ -1,0 +1,194 @@
+================================================================================
+Image Processing System Test Report
+Generated: 2025-03-03 06:14:12
+================================================================================
+
+
+UNIT_TESTS
+----------
+Duration: 173.83 seconds
+Status: FAILED
+
+Standard Output:
+============================= test session starts =============================
+platform win32 -- Python 3.13.2, pytest-8.3.4, pluggy-1.5.0 -- C:\Users\Noah\AppData\Local\Programs\Python\Python313\python.exe
+cachedir: .pytest_cache
+PyQt6 6.8.1 -- Qt runtime 6.8.2 -- Qt compiled 6.8.2
+rootdir: C:\Users\Noah\Desktop\Ebay Auto
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.8.0, asyncio-0.25.3, cov-6.0.0, mock-3.14.0, qt-4.4.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=function
+collecting ... collected 73 items / 50 deselected / 23 selected
+
+tests/test_opencv_utils.py::test_load_image_success PASSED               [  4%]
+tests/test_opencv_utils.py::test_load_image_nonexistent 
+-------------------------------- live log call --------------------------------
+2025-03-03 06:11:20 [   ERROR] Failed to load image: nonexistent.jpg (opencv_utils.py:26)
+PASSED                                                                   [  8%]
+tests/test_opencv_utils.py::test_convert_to_grayscale_rgb PASSED         [ 13%]
+tests/test_opencv_utils.py::test_convert_to_grayscale_already_gray PASSED [ 17%]
+tests/test_opencv_utils.py::test_resize_image_larger PASSED              [ 21%]
+tests/test_opencv_utils.py::test_resize_image_smaller PASSED             [ 26%]
+tests/test_opencv_utils.py::test_enhance_contrast PASSED                 [ 30%]
+tests/test_opencv_utils.py::test_denoise_image FAILED                    [ 34%]
+tests/test_opencv_utils.py::test_preprocess_image_complete PASSED        [ 39%]
+tests/test_opencv_utils.py::test_normalize_image PASSED                  [ 43%]
+tests/test_opencv_utils.py::test_extract_text_regions PASSED             [ 47%]
+tests/test_opencv_utils.py::test_error_handling 
+-------------------------------- live log call --------------------------------
+2025-03-03 06:11:20 [   ERROR] Contrast enhancement error: OpenCV(4.11.0) D:\a\opencv-python\opencv-python\opencv\modules\imgproc\src\clahe.cpp:353: error: (-215:Assertion failed) _src.type() == CV_8UC1 || _src.type() == CV_16UC1 in function '`anonymous-namespace'::CLAHE_Impl::apply'
+ (opencv_utils.py:76)
+2025-03-03 06:11:20 [   ERROR] Normalization error: divide by zero encountered in divide (opencv_utils.py:181)
+PASSED                                                                   [ 52%]
+tests/test_tmdb.py::test_search_movies PASSED                            [ 56%]
+tests/test_tmdb.py::test_get_movie PASSED                                [ 60%]
+tests/test_tmdb.py::test_invalid_movie_search PASSED                     [ 65%]
+tests/test_tmdb.py::test_invalid_movie_id PASSED                         [ 69%]
+tests/test_tmdb.py::test_tmdb_client_no_api_key PASSED                   [ 73%]
+tests/test_vision_processor.py::test_process_image_progress_tracking 
+------------------------------- live log setup --------------------------------
+2025-03-03 06:11:22 [ WARNING] Error checking models: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/models (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x0000013FF85378C0>, 'Connection to 127.0.0.1 timed out. (connect timeout=2)')) (vhs_vision.py:64)
+2025-03-03 06:11:22 [ WARNING] Discogs API not available - will rely on vision only (processor.py:39)
+-------------------------------- live log call --------------------------------
+2025-03-03 06:11:22 [    INFO] Processing image: C:\Users\Noah\AppData\Local\Temp\pytest-of-Noah\pytest-367\test_process_image_progress_tr0\test_vhs.jpg (processor.py:52)
+2025-03-03 06:11:28 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF86847D0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:11:28 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:11:33 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF8587490>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:11:33 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:11:38 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF86A18C0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:11:38 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:11:43 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF86A2470>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:11:43 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:11:48 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF86A2AD0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:11:48 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:11:53 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF853BDF0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:11:53 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:11:58 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF86A2AD0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:11:58 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+PASSED                                                                   [ 78%]
+tests/test_vision_processor.py::test_process_image_handles_missing_callback 
+------------------------------- live log setup --------------------------------
+2025-03-03 06:12:09 [ WARNING] Error checking models: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/models (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x0000013FF853B9B0>, 'Connection to 127.0.0.1 timed out. (connect timeout=2)')) (vhs_vision.py:64)
+2025-03-03 06:12:09 [ WARNING] Discogs API not available - will rely on vision only (processor.py:39)
+-------------------------------- live log call --------------------------------
+2025-03-03 06:12:09 [    INFO] Processing image: C:\Users\Noah\AppData\Local\Temp\pytest-of-Noah\pytest-367\test_process_image_handles_mis0\test_vhs.jpg (processor.py:52)
+2025-03-03 06:12:14 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF86A2E00>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:12:14 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:12:19 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF86A2030>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:12:19 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:12:24 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF86A1480>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:12:24 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:12:29 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF86A0F30>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:12:29 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:12:34 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF853B8A0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:12:34 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:12:39 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF853B570>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:12:39 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:12:44 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF86A0D10>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:12:44 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+PASSED                                                                   [ 82%]
+tests/test_vision_processor.py::test_process_image_error_handling 
+------------------------------- live log setup --------------------------------
+2025-03-03 06:12:46 [ WARNING] Error checking models: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/models (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x0000013FF853BF00>, 'Connection to 127.0.0.1 timed out. (connect timeout=2)')) (vhs_vision.py:64)
+2025-03-03 06:12:46 [ WARNING] Discogs API not available - will rely on vision only (processor.py:39)
+-------------------------------- live log call --------------------------------
+2025-03-03 06:12:46 [    INFO] Processing image: nonexistent.jpg (processor.py:52)
+2025-03-03 06:12:46 [   ERROR] Failed to load image: nonexistent.jpg (opencv_utils.py:26)
+PASSED                                                                   [ 86%]
+tests/test_vision_processor.py::test_process_image_with_invalid_image 
+------------------------------- live log setup --------------------------------
+2025-03-03 06:12:48 [ WARNING] Error checking models: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/models (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x0000013FF86A2360>, 'Connection to 127.0.0.1 timed out. (connect timeout=2)')) (vhs_vision.py:64)
+2025-03-03 06:12:48 [ WARNING] Discogs API not available - will rely on vision only (processor.py:39)
+-------------------------------- live log call --------------------------------
+2025-03-03 06:12:48 [    INFO] Processing image: C:\Users\Noah\AppData\Local\Temp\pytest-of-Noah\pytest-367\test_process_image_with_invali0\invalid.jpg (processor.py:52)
+2025-03-03 06:12:48 [   ERROR] Failed to load image: C:\Users\Noah\AppData\Local\Temp\pytest-of-Noah\pytest-367\test_process_image_with_invali0\invalid.jpg (opencv_utils.py:26)
+PASSED                                                                   [ 91%]
+tests/test_vision_processor.py::test_process_image_success_validation 
+------------------------------- live log setup --------------------------------
+2025-03-03 06:12:51 [ WARNING] Error checking models: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/models (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x0000013FF86A09E0>, 'Connection to 127.0.0.1 timed out. (connect timeout=2)')) (vhs_vision.py:64)
+2025-03-03 06:12:51 [ WARNING] Discogs API not available - will rely on vision only (processor.py:39)
+-------------------------------- live log call --------------------------------
+2025-03-03 06:12:51 [    INFO] Processing image: C:\Users\Noah\AppData\Local\Temp\pytest-of-Noah\pytest-367\test_process_image_success_val0\test_vhs.jpg (processor.py:52)
+2025-03-03 06:12:56 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF86A1F20>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:12:56 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:13:01 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF86A2CF0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:13:01 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:13:06 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF853BF00>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:13:06 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:13:11 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF853A7A0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:13:11 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:13:16 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF86A27A0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:13:16 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:13:21 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF86A19D0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:13:21 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:13:26 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF86A2360>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:13:26 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+PASSED                                                                   [ 95%]
+tests/test_vision_processor.py::test_api_backup_triggering 
+------------------------------- live log setup --------------------------------
+2025-03-03 06:13:33 [ WARNING] Error checking models: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/models (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x0000013FF853B9B0>, 'Connection to 127.0.0.1 timed out. (connect timeout=2)')) (vhs_vision.py:64)
+2025-03-03 06:13:33 [ WARNING] Discogs API not available - will rely on vision only (processor.py:39)
+-------------------------------- live log call --------------------------------
+2025-03-03 06:13:33 [    INFO] Processing image: C:\Users\Noah\AppData\Local\Temp\pytest-of-Noah\pytest-367\test_api_backup_triggering0\test_vhs.jpg (processor.py:52)
+2025-03-03 06:13:38 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF86A2030>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:13:38 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:13:43 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF853BBD0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:13:43 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:13:48 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF853BF00>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:13:48 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:13:53 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF86A2030>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:13:53 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:13:58 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF86A17B0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:13:58 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:14:04 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF86A1D00>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:14:04 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+2025-03-03 06:14:09 [   ERROR] API request failed: HTTPConnectionPool(host='127.0.0.1', port=1234): Max retries exceeded with url: /v1/chat/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000013FF86A1F20>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (vhs_vision.py:212)
+2025-03-03 06:14:09 [   ERROR] API error processing region: cannot access local variable 'response' where it is not associated with a value (vhs_vision.py:246)
+PASSED                                                                   [100%]
+
+================================== FAILURES ===================================
+_____________________________ test_denoise_image ______________________________
+
+noisy_image = array([[ 54, 238, 250, ...,  12, 249,   9],
+       [ 45, 238,  20, ...,  10, 226, 246],
+       [232,   5, 238, ..., 24...,  22,  44,   7],
+       [249,  41,  16, ..., 251, 245,  19],
+       [  9,  20,  16, ..., 227, 235, 248]], dtype=uint8)
+
+    @pytest.mark.unit
+    def test_denoise_image(noisy_image):
+        """Test image denoising."""
+        denoised = opencv_utils.denoise_image(noisy_image)
+    
+        # Denoised image should have less variation in flat areas
+        roi_noisy = noisy_image[30:70, 30:70]  # Center region
+        roi_denoised = denoised[30:70, 30:70]
+>       assert np.std(roi_denoised) < np.std(roi_noisy)
+E       assert 0.0 < 0.0
+E        +  where 0.0 = <function std at 0x0000013FF52DDD70>(array([[255, 255, 255, ..., 255, 255, 255],\n       [255, 255, 255, ..., 255, 255, 255],\n       [255, 255, 255, ..., 255, 255, 255],\n       ...,\n       [255, 255, 255, ..., 255, 255, 255],\n       [255, 255, 255, ..., 255, 255, 255],\n       [255, 255, 255, ..., 255, 255, 255]], dtype=uint8))
+E        +    where <function std at 0x0000013FF52DDD70> = np.std
+E        +  and   0.0 = <function std at 0x0000013FF52DDD70>(array([[255, 255, 255, ..., 255, 255, 255],\n       [255, 255, 255, ..., 255, 255, 255],\n       [255, 255, 255, ..., 255, 255, 255],\n       ...,\n       [255, 255, 255, ..., 255, 255, 255],\n       [255, 255, 255, ..., 255, 255, 255],\n       [255, 255, 255, ..., 255, 255, 255]], dtype=uint8))
+E        +    where <function std at 0x0000013FF52DDD70> = np.std
+
+tests\test_opencv_utils.py:101: AssertionError
+============================ slowest 10 durations =============================
+44.25s call     tests/test_vision_processor.py::test_process_image_progress_tracking
+40.19s call     tests/test_vision_processor.py::test_process_image_success_validation
+38.51s call     tests/test_vision_processor.py::test_api_backup_triggering
+35.76s call     tests/test_vision_processor.py::test_process_image_handles_missing_callback
+2.02s setup    tests/test_vision_processor.py::test_api_backup_triggering
+2.02s setup    tests/test_vision_processor.py::test_process_image_success_validation
+2.01s setup    tests/test_vision_processor.py::test_process_image_with_invalid_image
+2.01s setup    tests/test_vision_processor.py::test_process_image_progress_tracking
+2.01s setup    tests/test_vision_processor.py::test_process_image_handles_missing_callback
+2.01s setup    tests/test_vision_processor.py::test_process_image_error_handling
+=========================== short test summary info ===========================
+FAILED tests/test_opencv_utils.py::test_denoise_image - assert 0.0 < 0.0
+ +  where 0.0 = <function std at 0x0000013FF52DDD70>(array([[255, 255, 255, ..., 255, 255, 255],\n       [255, 255, 255, ..., 255, 255, 255],\n       [255, 255, 255, ..., 255, 255, 255],\n       ...,\n       [255, 255, 255, ..., 255, 255, 255],\n       [255, 255, 255, ..., 255, 255, 255],\n       [255, 255, 255, ..., 255, 255, 255]], dtype=uint8))
+ +    where <function std at 0x0000013FF52DDD70> = np.std
+ +  and   0.0 = <function std at 0x0000013FF52DDD70>(array([[255, 255, 255, ..., 255, 255, 255],\n       [255, 255, 255, ..., 255, 255, 255],\n       [255, 255, 255, ..., 255, 255, 255],\n       ...,\n       [255, 255, 255, ..., 255, 255, 255],\n       [255, 255, 255, ..., 255, 255, 255],\n       [255, 255, 255, ..., 255, 255, 255]], dtype=uint8))
+ +    where <function std at 0x0000013FF52DDD70> = np.std
+=========== 1 failed, 22 passed, 50 deselected in 171.44s (0:02:51) ===========
+
+================================================================================

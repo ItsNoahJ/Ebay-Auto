@@ -2,29 +2,38 @@
 
 ## [Unreleased]
 
+### Added
+- Enhanced test infrastructure:
+  - Comprehensive mock data structures
+  - Integration test coverage
+  - Error handling validation
+- New ProcessingStatusWidget planned:
+  - Progress bars for preprocessing
+  - Time elapsed tracking
+  - Memory usage monitoring
+- Results View enhancements planned:
+  - Color-coded confidence indicators
+  - Detailed error messaging
+  - Visual preprocessing comparisons
+
 ### Changed
-- Improved vision processing confidence calculation:
-  - Added progressive word count penalty for long titles
-  - Removed capitalization boost for long titles
-  - Enhanced title length validation
-  - Added additional confidence modifiers
+- Improved coordinator implementation:
+  - Better error handling
+  - Proper response validation
+  - Fallback mechanisms
 - Updated preprocessing pipeline:
   - Added adaptive image sizing
   - Optimized CLAHE parameters
-  - Enhanced text clarity with morphological operations
-- Added comprehensive integration tests for vision processing
-- Added detailed documentation for vision processing system
-
-### Added
-- New integration test suite (test_vision_integration.py)
-- Vision processing documentation (vision_processing.md)
-- Advanced confidence scoring system
-- Progressive penalties for long titles
+  - Enhanced text clarity
+- Updated documentation:
+  - Streamlined vision processing docs
+  - Updated roadmap
+  - Simplified OCR challenges
 
 ### Fixed
-- Title confidence calculation for long titles
-- Preprocessing pipeline optimization
-- Integration with GUI confidence display
+- Coordinator response structure
+- Mock data handling
+- Error propagation
 
 ## [1.0.0] - 2024-02-28
 ### Added

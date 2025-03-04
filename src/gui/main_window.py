@@ -3,9 +3,10 @@ Main window module.
 """
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 
-from PyQt6.QtCore import pyqtSlot
+from PyQt6.QtCore import pyqtSlot, QThread, pyqtSignal
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QApplication,
@@ -28,7 +29,41 @@ from ..models.coordinator import ProcessingCoordinator
 from .image_preview import ImagePreview
 from .results_view import ResultsView
 from .settings_dialog import SettingsDialog
-from .widgets import ConnectionStatusWidget
+from .widgets import ConnectionStatusWidget, ProcessingStatusWidget
+
+class ProcessingThread(QThread):
+    """Thread for processing images."""
+    finished = pyqtSignal(dict)
+    error = pyqtSignal(str)
+    progress = pyqtSignal(str, float)  # (stage_id, progress)
+    
+    def __init__(self, coordinator, image_path, debug):
+        super().__init__()
+        self.coordinator = coordinator
+        self.image_path = image_path
+        self.debug = debug
+        
+    def run(self):
+        """Run processing in background thread."""
+        try:
+            # Report grayscale conversion
+            self.progress.emit("grayscale", 0.0)
+            
+            # Start processing
+            results = self.coordinator.process_tape(
+                self.image_path,
+                debug=self.debug
+            )
+            
+            # Mark stages as complete
+            stages = ["grayscale", "resize", "enhance", "denoise", "text"]
+            for stage in stages:
+                self.progress.emit(stage, 1.0)
+                
+            self.finished.emit(results)
+            
+        except Exception as e:
+            self.error.emit(str(e))
 
 class MainWindow(QMainWindow):
     """Main application window."""
@@ -137,11 +172,9 @@ class MainWindow(QMainWindow):
         self.lm_status = ConnectionStatusWidget()
         self.statusBar().addPermanentWidget(self.lm_status)
         
-        # Add progress bar
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setFixedWidth(150)
-        self.progress_bar.hide()
-        self.statusBar().addPermanentWidget(self.progress_bar)
+        # Add processing status
+        self.processing_status = ProcessingStatusWidget()
+        self.statusBar().addPermanentWidget(self.processing_status)
         
         # Connect status signals
         self.logger.info("Connecting LM Studio status signal...")
@@ -259,6 +292,7 @@ class MainWindow(QMainWindow):
         self.clear_action.setEnabled(False)
         self.save_action.setEnabled(False)
         self.statusBar().showMessage("Ready")
+        self.processing_status.reset()
         
     @pyqtSlot()
     def _process_image(self):
@@ -274,42 +308,14 @@ class MainWindow(QMainWindow):
         self.logger.info(f"Starting processing of image: {self.current_image}")
             
         try:
-            # Start loading animation
+            # Start loading animation and processing status
             self.lm_status.start_loading_animation()
+            self.processing_status.start_processing()
             
-            # Show progress
-            self.progress_bar.setRange(0, 0)
-            self.progress_bar.show()
-                # Don't show processing message, just rely on the animation
-            
-            # Verify we're still connected before processing
+            # Verify connection
             self.lm_status.check_connection()
             if self.current_status != "connected":
                 raise Exception("Lost connection to LM Studio")
-            
-            # Process image
-            # Process image in a background thread
-            from PyQt6.QtCore import QThread, pyqtSignal
-            
-            class ProcessingThread(QThread):
-                finished = pyqtSignal(dict)
-                error = pyqtSignal(str)
-                
-                def __init__(self, coordinator, image_path, debug):
-                    super().__init__()
-                    self.coordinator = coordinator
-                    self.image_path = image_path
-                    self.debug = debug
-                    
-                def run(self):
-                    try:
-                        results = self.coordinator.process_tape(
-                            self.image_path,
-                            debug=self.debug
-                        )
-                        self.finished.emit(results)
-                    except Exception as e:
-                        self.error.emit(str(e))
             
             # Create and start processing thread
             self.processing_thread = ProcessingThread(
@@ -322,31 +328,35 @@ class MainWindow(QMainWindow):
                 self.logger.info("Processing completed successfully")
                 self.results.update_results(results)
                 self.save_action.setEnabled(True)
-                # Stop animation and hide progress bar only after results are displayed
-                self.lm_status.stop_loading_animation()  
-                self.progress_bar.hide()
+                self.lm_status.stop_loading_animation()
+                self.processing_status.finish_processing(True)
+                
+                # Auto-save if enabled
+                if self.settings["general"]["auto_save"]:
+                    results_dir = Path("storage/results")
+                    results_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    json_path = results_dir / f"results_{timestamp}.json"
+                    
+                    self.results.save_results(str(json_path))
+                    self.statusBar().showMessage(f"Auto-saved to: {json_path}")
                 
             def on_processing_error(error):
                 self.logger.error(f"Processing error: {error}")
                 QMessageBox.critical(self, "Error", f"Processing failed: {error}")
-                self.lm_status.stop_loading_animation()  
-                self.progress_bar.hide()
+                self.lm_status.stop_loading_animation()
+                self.processing_status.finish_processing(False)
+                
+            def on_processing_progress(stage_id, progress):
+                self.logger.debug(f"Processing progress: {stage_id} = {progress}")
+                self.processing_status.update_stage(stage_id, progress)
                 
             self.processing_thread.finished.connect(on_processing_finished)
             self.processing_thread.error.connect(on_processing_error)
+            self.processing_thread.progress.connect(on_processing_progress)
             self.processing_thread.start()
             
-            # Auto-save if enabled
-            if self.settings["general"]["auto_save"]:
-                results_dir = Path("storage/results")
-                results_dir.mkdir(parents=True, exist_ok=True)
-                
-                timestamp = results["debug_info"]["timestamp"]
-                json_path = results_dir / f"vhs_data_{timestamp}.json"
-                
-                self.results.save_results(str(json_path))
-                self.statusBar().showMessage(f"Auto-saved to: {json_path}")
-                
         except Exception as e:
             self.logger.exception("Processing error")
             QMessageBox.critical(
@@ -354,11 +364,8 @@ class MainWindow(QMainWindow):
                 "Error",
                 f"Processing failed: {e}"
             )
-            
-        finally:
-            # Stop loading animation and hide progress
             self.lm_status.stop_loading_animation()
-            self.progress_bar.hide()
+            self.processing_status.finish_processing(False)
             
     @pyqtSlot(str)
     def _on_lm_status_changed(self, status: str):

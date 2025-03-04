@@ -1,7 +1,7 @@
 """
 API client for enriching media metadata.
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import requests
 import logging
 from ..config.settings import (
@@ -11,6 +11,79 @@ from ..config.settings import (
 )
 
 logger = logging.getLogger(__name__)
+
+class TMDbClient:
+    """Client for interacting with The Movie Database (TMDb) API."""
+    
+    def __init__(self, api_key: Optional[str] = None):
+        """Initialize TMDb client.
+        
+        Args:
+            api_key: Optional API key. If not provided, uses TMDB_API_KEY from settings.
+        """
+        self.api_key = api_key or TMDB_API_KEY
+        if not self.api_key:
+            raise ValueError("TMDb API key is required")
+        
+        self.base_url = 'https://api.themoviedb.org/3'
+    
+    def search_movies(self, query: str) -> List[Dict[str, Any]]:
+        """Search for movies by title.
+        
+        Args:
+            query: Movie title to search for
+            
+        Returns:
+            List of movie search results
+        """
+        try:
+            response = requests.get(
+                f'{self.base_url}/search/movie',
+                params={
+                    'api_key': self.api_key,
+                    'query': query,
+                    'language': 'en-US',
+                    'page': 1,
+                    'include_adult': False
+                }
+            )
+            
+            response.raise_for_status()
+            data = response.json()
+            return data.get('results', [])
+            
+        except Exception as e:
+            logger.error(f"Error searching movies: {e}")
+            return []
+    
+    def get_movie(self, movie_id: int) -> Optional[Dict[str, Any]]:
+        """Get detailed information about a specific movie.
+        
+        Args:
+            movie_id: TMDb movie ID
+            
+        Returns:
+            Movie details dictionary, or None if not found/error
+        """
+        try:
+            response = requests.get(
+                f'{self.base_url}/movie/{movie_id}',
+                params={
+                    'api_key': self.api_key,
+                    'language': 'en-US',
+                    'append_to_response': 'credits'
+                }
+            )
+            
+            if response.status_code == 404:
+                return None
+                
+            response.raise_for_status()
+            return response.json()
+            
+        except Exception as e:
+            logger.error(f"Error getting movie details: {e}")
+            return None
 
 def create_empty_movie_result() -> Dict[str, Any]:
     """Create empty movie result structure."""

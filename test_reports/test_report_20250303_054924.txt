@@ -1,0 +1,53 @@
+================================================================================
+Image Processing System Test Report
+Generated: 2025-03-03 05:49:24
+================================================================================
+
+
+UNIT_TESTS
+----------
+Duration: 2.19 seconds
+Status: FAILED
+
+Standard Output:
+============================= test session starts =============================
+platform win32 -- Python 3.13.2, pytest-8.3.4, pluggy-1.5.0 -- C:\Users\Noah\AppData\Local\Programs\Python\Python313\python.exe
+cachedir: .pytest_cache
+PyQt6 6.8.1 -- Qt runtime 6.8.2 -- Qt compiled 6.8.2
+rootdir: C:\Users\Noah\Desktop\Ebay Auto
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.8.0, asyncio-0.25.3, cov-6.0.0, mock-3.14.0, qt-4.4.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=function
+collecting ... collected 68 items / 1 error / 50 deselected / 18 selected
+
+=================================== ERRORS ====================================
+_____________________ ERROR collecting tests/test_tmdb.py _____________________
+ImportError while importing test module 'C:\Users\Noah\Desktop\Ebay Auto\tests\test_tmdb.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\_pytest\python.py:493: in importtestmodule
+    mod = import_path(
+..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\_pytest\pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+..\..\AppData\Local\Programs\Python\Python313\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+<frozen importlib._bootstrap>:1387: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1360: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1331: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:935: in _load_unlocked
+    ???
+..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\_pytest\assertion\rewrite.py:184: in exec_module
+    exec(co, module.__dict__)
+tests\test_tmdb.py:5: in <module>
+    from src.enrichment.api_client import TMDbClient
+E   ImportError: cannot import name 'TMDbClient' from 'src.enrichment.api_client' (C:\Users\Noah\Desktop\Ebay Auto\src\enrichment\api_client.py)
+=========================== short test summary info ===========================
+ERROR tests/test_tmdb.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+======================= 50 deselected, 1 error in 0.64s =======================
+
+================================================================================

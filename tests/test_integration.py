@@ -1,234 +1,186 @@
 """
-Integration test for VHS processing system.
+Integration tests for the complete image processing pipeline.
 """
 import os
-import pytest
-from unittest.mock import patch, Mock
+import time
 from pathlib import Path
 
-from src.models.coordinator import ProcessingCoordinator
-from src.gui.results_view import ResultsView
-from src.enrichment import api_client  # Import the module to patch correctly
+import cv2
+import numpy as np
+import pytest
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
-# Mock data
-MOCK_MOVIE_DATA = {
-    "title": "Back to the Future",
-    "year": 1985,
-    "runtime": 116,
-    "genre": ["Adventure", "Science Fiction"],
-    "director": "Robert Zemeckis",
-    "cast": ["Michael J. Fox", "Christopher Lloyd"],
-    "plot": "Marty McFly, a 17-year-old high school student, is accidentally sent thirty years into the past."
-}
+from src.gui.main_window import MainWindow
+from src.models.coordinator import ProcessingCoordinator
+from src.vision.processor import VisionProcessor
+from src.gui.widgets import ProcessingStatusWidget
+from src.utils import opencv_utils
 
-MOCK_AUDIO_DATA = {
-    "artist": "Pink Floyd",
-    "album": "The Wall",
-    "year": 1979,
-    "genre": ["Progressive Rock", "Rock"],
-    "label": "Harvest Records",
-    "format": "Vinyl",
-    "tracks": ["Another Brick in the Wall", "Comfortably Numb"]
-}
-
-# Mock vision processing results
-MOCK_VISION_DATA = {
-    "image_size": (800, 1200),
-    "sharpness": 85.5,
-    "rectangles": 1,
-    "text_regions": ["Back to the Future (1985)"],
-    "processing_time": 0.5
-}
-
-MOCK_VISION_RESULT = {
-    "success": True,
-    "vision_data": MOCK_VISION_DATA,
-    "texts": ["Back to the Future (1985)"],
-    "debug_image": None
-}
-
-# Set up Qt application for GUI tests
-@pytest.fixture(scope="module")
-def qapp():
-    """Create QApplication instance."""
-    os.environ["QT_QPA_PLATFORM"] = "minimal"  # Headless testing
-    app = QApplication([])
-    yield app
-    app.quit()
-
-@pytest.fixture(autouse=True)
-def setup_environment():
-    """Set up test environment variables."""
-    with patch.dict(os.environ, {
-        'TMDB_API_KEY': 'dummy_tmdb_key',
-        'DISCOGS_CONSUMER_KEY': 'dummy_discogs_key',
-        'DISCOGS_CONSUMER_SECRET': 'dummy_discogs_secret'
-    }, clear=True):  # Clear=True ensures no other env vars interfere
-        yield
-
-@patch('src.models.coordinator.search_movie_details')  # Patch at the point of use
-@patch('src.vision.processor.VisionProcessor.process_image')
-def test_movie_processing(mock_process_image, mock_search_movie, qapp):
-    """Test complete movie processing pipeline."""
-    # Configure mocks
-    mock_process_image.return_value = MOCK_VISION_RESULT
-    mock_search_movie.return_value = MOCK_MOVIE_DATA.copy()  # Use copy to prevent modification
-
-    # Initialize components
-    coordinator = ProcessingCoordinator()
-    results_view = ResultsView()
+@pytest.fixture
+def sample_vhs_files(tmp_path):
+    """Create multiple sample VHS cover images for testing."""
+    images = []
     
-    # Process test image
-    test_image = str(Path("test_images") / "test_vhs_cover.jpg")
-    results = coordinator.process_tape(test_image, debug=True)
+    # Create several test images with varying content
+    for i in range(3):
+        image = np.zeros((300, 200, 3), dtype=np.uint8)
+        
+        # Add different text for each image
+        cv2.rectangle(image, (20, 20), (180, 60), (255, 255, 255), -1)
+        cv2.putText(image, f"TEST TITLE {i+1}", (30, 45),
+                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+        
+        # Save the image
+        image_path = tmp_path / f"test_vhs_{i+1}.jpg"
+        cv2.imwrite(str(image_path), image)
+        images.append(str(image_path))
     
-    # Verify mock calls
-    mock_process_image.assert_called_once()
-    mock_search_movie.assert_called_once_with("Back to the Future (1985)")
-    
-    # Verify basic results structure
-    assert results["success"]
-    assert "extracted_titles" in results
-    assert len(results["extracted_titles"]) > 0
-    assert "vision_data" in results
-    
-    # Verify movie data integration
-    assert "movie_data" in results
-    movie_data = results["movie_data"]
-    assert movie_data is not None
-    assert movie_data["title"] == MOCK_MOVIE_DATA["title"]
-    assert movie_data["year"] == MOCK_MOVIE_DATA["year"]
-    assert movie_data["plot"] == MOCK_MOVIE_DATA["plot"]
-    
-    # Test GUI display
-    results_view.update_results(results)
-    
-    # Verify movie tab content
-    movie_text = results_view.movie_text.toPlainText()
-    assert MOCK_MOVIE_DATA["title"] in movie_text
-    assert str(MOCK_MOVIE_DATA["year"]) in movie_text
-    assert MOCK_MOVIE_DATA["plot"][:50] in movie_text
-    
-    # Verify results saved
-    assert "results_path" in results
-    results_file = Path(results["results_path"])
-    assert results_file.exists()
+    return images
 
-@patch('src.models.coordinator.search_audio_details')  # Patch at the point of use
-@patch('src.vision.processor.VisionProcessor.process_image')
-def test_audio_processing(mock_process_image, mock_search_audio, qapp):
-    """Test complete audio processing pipeline."""
-    # Configure mocks for audio media
-    mock_process_image.return_value = {
-        "success": True,
-        "vision_data": MOCK_VISION_DATA,
-        "texts": ["Pink Floyd - The Wall"],
-        "debug_image": None
-    }
-    mock_search_audio.return_value = MOCK_AUDIO_DATA.copy()  # Use copy to prevent modification
+@pytest.mark.integration
+def test_full_pipeline_integration(sample_vhs_files, qtbot, monkeypatch, tmp_path):
+    """Test the complete processing pipeline from GUI to results."""
+    # Set up test environment
+    monkeypatch.setattr(
+        "src.config.settings.STORAGE_PATHS",
+        {"results": tmp_path / "results"}
+    )
+    
+    # Create main window
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+    
+    # Get references to key components
+    status_widget = window.findChild(ProcessingStatusWidget)
+    assert status_widget is not None
+    
+    # Process each test image
+    for image_path in sample_vhs_files:
+        # Load image
+        qtbot.mouseClick(window.load_button, Qt.MouseButton.LeftButton)
+        window.image_path = image_path  # Simulate file selection
+        
+        # Start processing
+        qtbot.mouseClick(window.process_button, Qt.MouseButton.LeftButton)
+        
+        # Wait for processing to complete (timeout after 30 seconds)
+        start_time = time.time()
+        while not window.processing_complete and time.time() - start_time < 30:
+            QApplication.processEvents()
+            time.sleep(0.1)
+        
+        assert window.processing_complete
+        
+        # Verify progress tracking
+        for stage_data in status_widget.stage_bars.values():
+            progress_bar = stage_data["progress"]
+            percent_label = stage_data["percent"]
+            assert progress_bar.value() == 100
+            assert percent_label.text() == "100%"
+        
+        # Verify results
+        assert window.results is not None
+        assert window.results["success"]
+        assert len(window.results["extracted_titles"]) > 0
+        
+        # Check that results were saved
+        results_file = Path(window.results["results_path"])
+        assert results_file.exists()
+        
+        # Reset for next image
+        qtbot.mouseClick(window.clear_button, Qt.MouseButton.LeftButton)
+        assert status_widget.time_label.text() == "00:00"
+
+@pytest.mark.integration
+def test_pipeline_error_handling(tmp_path, qtbot):
+    """Test error handling throughout the pipeline."""
+    # Create an invalid image file
+    invalid_path = tmp_path / "invalid.jpg"
+    with open(invalid_path, "w") as f:
+        f.write("not an image")
     
     # Initialize components
     coordinator = ProcessingCoordinator()
-    results_view = ResultsView()
+    widget = ProcessingStatusWidget()
+    qtbot.addWidget(widget)
     
-    # Process test image
-    test_image = str(Path("test_images") / "test_audio_cover.jpg")
-    results = coordinator.process_tape(test_image, media_type="VINYL")
-    
-    # Verify mock calls
-    mock_process_image.assert_called_once()
-    mock_search_audio.assert_called_once_with("Pink Floyd - The Wall", "VINYL")
-    
-    # Verify audio data integration
-    assert "audio_data" in results
-    audio_data = results["audio_data"]
-    assert audio_data is not None
-    assert audio_data["artist"] == MOCK_AUDIO_DATA["artist"]
-    assert audio_data["album"] == MOCK_AUDIO_DATA["album"]
-    assert audio_data["year"] == MOCK_AUDIO_DATA["year"]
-    
-    # Test GUI display
-    results_view.update_results(results)
-    audio_text = results_view.audio_text.toPlainText()
-    assert MOCK_AUDIO_DATA["artist"] in audio_text
-    assert MOCK_AUDIO_DATA["album"] in audio_text
-    
-@patch('src.vision.processor.VisionProcessor.process_image')
-def test_invalid_image_handling(mock_process_image, qapp):
-    """Test handling of invalid image input."""
-    # Configure mock to simulate error
-    mock_process_image.return_value = {
-        "success": False,
-        "error": "Failed to load image: nonexistent.jpg"
-    }
-    
-    coordinator = ProcessingCoordinator()
-    results_view = ResultsView()
-    
-    # Process non-existent image
-    results = coordinator.process_tape("nonexistent.jpg")
+    # Start processing
+    widget.start_processing()
+    results = coordinator.process_tape(
+        str(invalid_path),
+        progress_callback=widget.update_stage
+    )
     
     # Verify error handling
     assert not results["success"]
     assert "error" in results
-    
-    # Test GUI handles error gracefully
-    results_view.update_results(results)
-    assert "No movie data" in results_view.movie_text.toPlainText()
-    
-@patch('src.vision.processor.VisionProcessor.process_image')
-def test_no_text_found_handling(mock_process_image, qapp):
-    """Test handling when no text is found in image."""
-    # Configure mock for no text found
-    mock_process_image.return_value = {
-        "success": True,
-        "vision_data": {
-            "image_size": (100, 100),
-            "sharpness": 0.0,
-            "rectangles": 0,
-            "text_regions": [],
-            "processing_time": 0.1
-        },
-        "texts": [],
-        "debug_image": None
-    }
-    
-    coordinator = ProcessingCoordinator()
-    results_view = ResultsView()
-    
-    # Create blank test image
-    test_image = str(Path("test_images") / "blank.jpg")
-    if not Path(test_image).exists():
-        # Create a small blank image for testing
-        from PIL import Image
-        img = Image.new('RGB', (100, 100), color='white')
-        img.save(test_image)
-    
-    # Process blank image
-    results = coordinator.process_tape(test_image)
-    
-    # Verify graceful handling
-    assert results["success"]
-    assert len(results.get("extracted_titles", [])) == 0
-    
-    # Test GUI handles no text gracefully
-    results_view.update_results(results)
-    assert "No text extracted" in results_view.text_area.toPlainText()
+    assert widget.status_label.text() == "Error"
 
-def test_missing_api_keys(qapp):
-    """Test graceful handling when API keys are not configured."""
-    # Test movie metadata without TMDB key
-    with patch.dict('os.environ', {'TMDB_API_KEY': ''}):
-        movie_data = api_client.search_movie_details("Back to the Future")
-        assert movie_data["title"] is None
-        assert movie_data["year"] is None
-        
-    # Test audio metadata without Discogs keys
-    with patch.dict('os.environ', {
-        'DISCOGS_CONSUMER_KEY': '',
-        'DISCOGS_CONSUMER_SECRET': ''
-    }):
-        audio_data = api_client.search_audio_details("Pink Floyd - The Wall", "VINYL")
-        assert audio_data["artist"] is None
-        assert audio_data["album"] is None
+@pytest.mark.integration
+def test_preprocessing_stages(sample_vhs_files, qtbot):
+    """Test each preprocessing stage's impact on image quality."""
+    image_path = sample_vhs_files[0]
+    
+    # Load original image
+    original = cv2.imread(image_path)
+    assert original is not None
+    
+    # Test each preprocessing stage
+    gray = opencv_utils.convert_to_grayscale(original)
+    assert len(gray.shape) == 2
+    
+    resized = opencv_utils.resize_image(gray, target_width=1024)
+    assert resized.shape[1] <= 1024
+    
+    enhanced = opencv_utils.enhance_contrast(resized)
+    assert np.std(enhanced) > np.std(resized)  # Higher contrast
+    
+    denoised = opencv_utils.denoise_image(enhanced)
+    center_roi = lambda img: img[img.shape[0]//4:3*img.shape[0]//4, 
+                                img.shape[1]//4:3*img.shape[1]//4]
+    assert np.std(center_roi(denoised)) < np.std(center_roi(enhanced))
+
+@pytest.mark.integration
+def test_memory_usage_tracking(sample_vhs_files, qtbot):
+    """Test memory usage tracking during processing."""
+    widget = ProcessingStatusWidget()
+    qtbot.addWidget(widget)
+    
+    # Record initial memory
+    initial_memory = float(widget.memory_label.text().split()[0])
+    
+    # Process large image
+    coordinator = ProcessingCoordinator()
+    widget.start_processing()
+    coordinator.process_tape(
+        sample_vhs_files[0],
+        progress_callback=widget.update_stage
+    )
+    
+    # Verify memory increased
+    final_memory = float(widget.memory_label.text().split()[0])
+    assert final_memory > initial_memory
+
+@pytest.mark.integration
+def test_concurrent_operations(sample_vhs_files, qtbot):
+    """Test handling of concurrent processing attempts."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+    
+    # Start first processing
+    window.image_path = sample_vhs_files[0]
+    qtbot.mouseClick(window.process_button, Qt.MouseButton.LeftButton)
+    
+    # Verify second processing attempt is blocked
+    assert not window.process_button.isEnabled()
+    
+    # Wait for completion
+    while not window.processing_complete:
+        QApplication.processEvents()
+        time.sleep(0.1)
+    
+    # Verify processing is re-enabled
+    assert window.process_button.isEnabled()
