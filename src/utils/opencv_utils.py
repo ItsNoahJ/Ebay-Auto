@@ -59,107 +59,226 @@ def resize_image(image: np.ndarray, target_width: int = 1024) -> np.ndarray:
         
 def enhance_contrast(image: np.ndarray) -> np.ndarray:
     """
-    Enhance image contrast using CLAHE.
+    Enhance image contrast using advanced adaptive techniques.
     
     Args:
         image: Input grayscale image
         
     Returns:
-        Contrast enhanced image
+        Contrast enhanced image with improved text visibility
     """
     try:
-        # Apply CLAHE
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-        enhanced = clahe.apply(image)
-        return enhanced
+        # Initial brightness normalization using CLAHE
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+        clahe_result = clahe.apply(image)
+        
+        # Local contrast enhancement
+        kernel_size = 15
+        local_mean = cv2.GaussianBlur(image, (kernel_size, kernel_size), 0)
+        local_std = cv2.GaussianBlur((image - local_mean)**2, (kernel_size, kernel_size), 0)**0.5
+        
+        # Enhance local contrast where std is low (flat regions)
+        alpha = np.clip(1.5 - local_std / local_std.max(), 0.8, 1.5)
+        enhanced = cv2.addWeighted(image, alpha.mean(), clahe_result, 2-alpha.mean(), 0)
+        
+        # Fine-tune contrast using bilateral filter
+        bilateral = cv2.bilateralFilter(enhanced, d=5, sigmaColor=10, sigmaSpace=10)
+        
+        # Apply second CLAHE pass with milder parameters
+        clahe_mild = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4,4))
+        result = clahe_mild.apply(bilateral)
+        
+        # Blend results based on text clarity
+        text_clarity_orig = estimate_text_clarity(enhanced)
+        text_clarity_new = estimate_text_clarity(result)
+        
+        if text_clarity_new > text_clarity_orig * 1.2:
+            return result
+        elif text_clarity_new > text_clarity_orig * 0.8:
+            # Weighted blend
+            alpha = text_clarity_new / (text_clarity_orig + text_clarity_new)
+            return cv2.addWeighted(enhanced, 1-alpha, result, alpha, 0)
+        else:
+            return enhanced
+        
     except Exception as e:
         logger.error(f"Contrast enhancement error: {e}")
         return image
 
+def estimate_text_clarity(image: np.ndarray) -> float:
+    """
+    Estimate text clarity in an image using edge detection.
+    
+    Args:
+        image: Grayscale image
+        
+    Returns:
+        Clarity score (higher is better)
+    """
+    try:
+        # Apply Sobel edge detection
+        grad_x = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=3)
+        grad_y = cv2.Sobel(image, cv2.CV_64F, 0, 1, ksize=3)
+        
+        # Calculate gradient magnitude
+        gradient = np.sqrt(grad_x**2 + grad_y**2)
+        
+        # Focus on strong edges likely to be text
+        strong_edges = gradient > np.mean(gradient) + np.std(gradient)
+        
+        # Calculate clarity score
+        edge_strength = np.mean(gradient[strong_edges]) if np.any(strong_edges) else 0
+        edge_count = np.sum(strong_edges) / image.size  # Normalized edge count
+        
+        return edge_strength * edge_count
+        
+    except Exception as e:
+        logger.error(f"Text clarity estimation error: {e}")
+        return 0.0
+
 def denoise_image(image: np.ndarray) -> np.ndarray:
     """
-    Apply multi-stage denoising to image.
+    Apply advanced adaptive denoising optimized for text preservation.
     
     Args:
         image: Input grayscale or color image
         
     Returns:
-        Denoised image
+        Denoised image with preserved text edges
     """
     try:
         # Ensure uint8 type
         if image.dtype != np.uint8:
             image = cv2.convertScaleAbs(image)
-        
-        # First pass: Mild bilateral filtering for edge preservation
-        bilateral = cv2.bilateralFilter(image, d=5, sigmaColor=25, sigmaSpace=25)
-        
-        # Second pass: Non-local means for fine detail preservation
-        if len(image.shape) == 2:
-            # For grayscale images
-            # Use moderate h value and small windows for detail preservation
-            denoised = cv2.fastNlMeansDenoising(
-                bilateral,
-                None,
-                h=7,  # Moderate strength
-                templateWindowSize=5,  # Small template for detail
-                searchWindowSize=15  # Moderate search area
-            )
-        else:
-            # For color images
-            # Use different strengths for luminance and color
-            denoised = cv2.fastNlMeansDenoisingColored(
-                bilateral,
-                None,
-                h=7,  # Luminance filtering
-                hColor=10,  # Color filtering
-                templateWindowSize=5,
-                searchWindowSize=15
-            )
             
-        # Final pass: Light gaussian blur to smooth any remaining artifacts
-        # but only if the image has high frequency noise
-        if np.std(denoised) > np.std(bilateral):
-            denoised = cv2.GaussianBlur(denoised, (3,3), 0.5)
-            
-        return denoised
+        # Calculate local noise levels using sliding window
+        patch_size = 7
+        noise_map = np.zeros_like(image, dtype=np.float32)
+        
+        # Pad image for window operations
+        padded = cv2.copyMakeBorder(image, patch_size//2, patch_size//2, patch_size//2, patch_size//2, cv2.BORDER_REFLECT)
+        
+        # Calculate local noise for each pixel
+        h, w = image.shape[:2]
+        for i in range(h):
+            for j in range(w):
+                patch = padded[i:i+patch_size, j:j+patch_size]
+                noise_map[i,j] = np.std(patch)
+                
+        # Normalize noise map
+        noise_map = cv2.normalize(noise_map, None, 0, 1, cv2.NORM_MINMAX)
+        
+        # Calculate edge mask to preserve text
+        grad_x = cv2.Sobel(image, cv2.CV_32F, 1, 0, ksize=3)
+        grad_y = cv2.Sobel(image, cv2.CV_32F, 0, 1, ksize=3)
+        edge_mask = np.sqrt(grad_x**2 + grad_y**2)
+        edge_mask = cv2.normalize(edge_mask, None, 0, 1, cv2.NORM_MINMAX)
+        
+        # Combine noise map and edge mask
+        denoising_strength = 1 - (edge_mask * 0.7 + noise_map * 0.3)
+        
+        # Adaptive bilateral filtering
+        sigma_color_base = 10
+        sigma_space_base = 10
+        
+        # Apply bilateral filter with adapted parameters
+        bilateral = cv2.bilateralFilter(
+            image, 
+            d=5,
+            sigmaColor=sigma_color_base * (1 + denoising_strength.mean()),
+            sigmaSpace=sigma_space_base
+        )
+        
+        # For very noisy regions, apply additional targeted filtering
+        if np.mean(noise_map) > 0.5:
+            # Second pass with stronger parameters in noisy areas
+            mask = noise_map > 0.7
+            if np.any(mask):
+                strong_denoise = cv2.bilateralFilter(
+                    bilateral,
+                    d=7,
+                    sigmaColor=sigma_color_base * 2,
+                    sigmaSpace=sigma_space_base * 1.5
+                )
+                # Convert noise_map to proper format for blending
+                blend_weight = noise_map.astype(np.float32)
+                bilateral = cv2.addWeighted(
+                    bilateral,
+                    1.0 - blend_weight.mean(),
+                    strong_denoise,
+                    blend_weight.mean(),
+                    0
+                )
+        
+        return bilateral.astype(np.uint8)
     except Exception as e:
         logger.error(f"Denoising error: {e}")
         return image
 
 def preprocess_image(image: np.ndarray) -> np.ndarray:
     """
-    Preprocess image optimized for text extraction.
+    Preprocess image with advanced optimization for text extraction.
     
     Args:
         image: Input image array
         
     Returns:
-        Preprocessed image array optimized for OCR
+        Preprocessed image array optimized for OCR with enhanced text clarity
     """
     try:
         # Convert to grayscale
         gray = convert_to_grayscale(image)
         
-        # Resize while maintaining text readability
-        resized = resize_image(gray, target_width=1600)  # Higher resolution for better text detail
+        # Analyze image characteristics
+        initial_std = np.std(gray)
+        initial_mean = np.mean(gray)
+        initial_clarity = estimate_text_clarity(gray)
         
-        # Initial denoising to clean up the image
-        denoised = denoise_image(resized)
+        # Adaptive resize based on image quality
+        target_width = 2048 if initial_clarity > 0.1 else 1600
+        resized = resize_image(gray, target_width=target_width)
         
-        # Enhance local contrast for better text definition
-        enhanced = enhance_contrast(denoised)
+        # Enhanced contrast first to improve text visibility
+        enhanced = enhance_contrast(resized)
         
-        # Normalize image statistics for consistent processing
-        normalized = normalize_image(enhanced, target_mean=127, target_std=40)
+        # Apply selective denoising based on local noise levels
+        if initial_std < 40:
+            denoised = denoise_image(enhanced)
+            # Verify denoising didn't harm text clarity
+            denoised_clarity = estimate_text_clarity(denoised)
+            if denoised_clarity >= initial_clarity * 0.9:
+                enhanced = denoised
         
-        # Second pass of targeted denoising with text preservation
-        if np.std(normalized) > 45:  # Only if image is still noisy
-            final = cv2.bilateralFilter(normalized, d=5, sigmaColor=10, sigmaSpace=10)
-        else:
-            final = normalized
+        # Apply additional contrast enhancement if needed
+        enhanced_clarity = estimate_text_clarity(enhanced)
+        if enhanced_clarity < initial_clarity * 0.9:
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4,4))
+            clahe_result = clahe.apply(enhanced)
+            # Blend based on clarity
+            blend_alpha = min(enhanced_clarity / initial_clarity, 0.7)
+            enhanced = cv2.addWeighted(enhanced, 1.0 - blend_alpha, clahe_result, blend_alpha, 0)
+        
+        # Normalize to optimal range for OCR based on image characteristics
+        target_mean = 135 if initial_mean < 100 else (120 if initial_mean > 200 else 127)
+        target_std = 45 if initial_mean < 100 else (35 if initial_mean > 200 else 40)
+        normalized = normalize_image(enhanced, target_mean=target_mean, target_std=target_std)
+        
+        final_clarity = estimate_text_clarity(normalized)
+        if final_clarity < initial_clarity * 0.9:
+            # Apply adaptive sharpening
+            kernel_size = 3
+            kernel = np.zeros((kernel_size, kernel_size), np.float32)
+            kernel[1,1] = 1.5
+            kernel[0,1] = kernel[2,1] = kernel[1,0] = kernel[1,2] = -0.25
+            sharpened = cv2.filter2D(normalized, -1, kernel)
             
-        return final
+            # Blend sharpened result if it improves clarity
+            sharp_clarity = estimate_text_clarity(sharpened)
+            if sharp_clarity > final_clarity:
+                blend_ratio = min((sharp_clarity - final_clarity) / final_clarity, 0.5)
+                normalized = cv2.addWeighted(normalized, 1.0 - blend_ratio, sharpened, blend_ratio, 0)
+        
+        return normalized
         
     except Exception as e:
         logger.error(f"Preprocessing error: {e}")

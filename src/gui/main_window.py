@@ -3,6 +3,7 @@ Main window module.
 """
 import logging
 import sys
+import cv2
 from datetime import datetime
 from pathlib import Path
 
@@ -37,32 +38,50 @@ class ProcessingThread(QThread):
     error = pyqtSignal(str)
     progress = pyqtSignal(str, float)  # (stage_id, progress)
     
-    def __init__(self, coordinator, image_path, debug):
+    def __init__(self, coordinator, image_path):
         super().__init__()
         self.coordinator = coordinator
         self.image_path = image_path
-        self.debug = debug
+        self.stages = ["grayscale", "resize", "enhance", "denoise", "text"]
         
     def run(self):
         """Run processing in background thread."""
         try:
-            # Report grayscale conversion
-            self.progress.emit("grayscale", 0.0)
+            # Initialize progress for all stages
+            for stage in self.stages:
+                self.progress.emit(stage, 0.0)
             
-            # Start processing
-            results = self.coordinator.process_tape(
-                self.image_path,
-                debug=self.debug
-            )
-            
-            # Mark stages as complete
-            stages = ["grayscale", "resize", "enhance", "denoise", "text"]
-            for stage in stages:
-                self.progress.emit(stage, 1.0)
+            # Load image
+            image = cv2.imread(self.image_path)
+            if image is None:
+                raise ValueError("Failed to load image")
                 
-            self.finished.emit(results)
+            # Start processing
+            results = self.coordinator.process_tape(image)
+            
+            if results.get("success", False):
+                # Mark all stages as complete
+                for stage in self.stages:
+                    self.progress.emit(stage, 1.0)
+                self.finished.emit(results)
+            else:
+                error = results.get("error", "Unknown error occurred")
+                # Reset incomplete stages
+                for stage in self.stages:
+                    if not results.get(f"{stage}_complete", False):
+                        self.progress.emit(stage, 0.0)
+                        
+                # Check for timeout vs other errors
+                if "timeout" in error.lower() or "timed out" in error.lower():
+                    results["error_type"] = "timeout"
+                else:
+                    results["error_type"] = "error"
+                self.finished.emit(results)
             
         except Exception as e:
+            # Reset all progress on exception
+            for stage in self.stages:
+                self.progress.emit(stage, 0.0)
             self.error.emit(str(e))
 
 class MainWindow(QMainWindow):
@@ -77,7 +96,8 @@ class MainWindow(QMainWindow):
         # Initialize state
         self.coordinator = ProcessingCoordinator()
         self.current_image = None
-        self.current_status = "connected"  # Initialize as connected since we verify in setup
+        self.current_status = "disconnected"  # Start disconnected to avoid timeouts
+        self.processing_complete = False
         self.logger.info(f"Initial LM Studio status: {self.current_status}")
         self.settings = {
             "general": {
@@ -166,8 +186,6 @@ class MainWindow(QMainWindow):
         
     def _create_statusbar(self):
         """Create status bar."""
-        self.statusBar().showMessage("Ready")
-        
         # Add LM Studio status
         self.lm_status = ConnectionStatusWidget()
         self.statusBar().addPermanentWidget(self.lm_status)
@@ -238,6 +256,14 @@ class MainWindow(QMainWindow):
             self.preview.load_image(image_path)
             
     @pyqtSlot(str)
+    def _on_processing_error(self, error: str):
+        """Handle processing errors."""
+        self.logger.error(f"Processing error: {error}")
+        self.processing_status.finish_processing(False)
+        self.lm_status.stop_loading_animation()
+        self.processing_complete = True  # Mark as complete even on error
+        QMessageBox.critical(self, "Error", f"Processing failed: {error}")
+
     def _on_image_loaded(self, image_path: str):
         """Handle loaded image."""
         self.logger.info(f"Image loaded event received. Path: {image_path}")
@@ -248,7 +274,7 @@ class MainWindow(QMainWindow):
         self.current_image = image_path
         
         # Update button states
-        should_enable = self.current_status == "connected"
+        should_enable = True  # Allow processing even if LM Studio is not connected
         self.logger.info(f"Setting process button enabled: {should_enable}")
         self.process_action.setEnabled(should_enable)
         
@@ -287,7 +313,7 @@ class MainWindow(QMainWindow):
         """Clear current image and results."""
         self.current_image = None
         self.preview.clear()
-        self.results.clear()
+        self.results.clear()  # This will clear all results including preprocessing images
         self.process_action.setEnabled(False)
         self.clear_action.setEnabled(False)
         self.save_action.setEnabled(False)
@@ -301,56 +327,92 @@ class MainWindow(QMainWindow):
             self.logger.warning("No image selected for processing")
             return
             
+        # Allow processing even if LM Studio is not connected
         if self.current_status != "connected":
-            self.logger.warning(f"Cannot process - LM Studio status: {self.current_status}")
-            return
+            self.logger.warning(f"Processing without LM Studio (status: {self.current_status})")
             
         self.logger.info(f"Starting processing of image: {self.current_image}")
             
         try:
+            # Reset completion state
+            self.processing_complete = False
+            
             # Start loading animation and processing status
             self.lm_status.start_loading_animation()
             self.processing_status.start_processing()
             
-            # Verify connection
-            self.lm_status.check_connection()
-            if self.current_status != "connected":
-                raise Exception("Lost connection to LM Studio")
+            # Skip connection check
+            self.logger.info("Skipping LM Studio connection check")
             
             # Create and start processing thread
             self.processing_thread = ProcessingThread(
                 self.coordinator,
-                self.current_image,
-                self.settings["general"]["debug_enabled"]
+                self.current_image
             )
             
             def on_processing_finished(results):
                 self.logger.info("Processing completed successfully")
-                self.results.update_results(results)
-                self.save_action.setEnabled(True)
-                self.lm_status.stop_loading_animation()
-                self.processing_status.finish_processing(True)
+                if "error" in results:
+                    if "timeout" in results["error"].lower():
+                        self.processing_status.finish_processing(
+                            False, 
+                            error_type="timeout",
+                            error_msg=results["error"]
+                        )
+                    else:
+                        self.processing_status.finish_processing(
+                            False,
+                            error_type="error",
+                            error_msg=results["error"]
+                        )
+                else:
+                    # Get preprocessing images from coordinator
+                    preprocessing_images = self.coordinator.get_preprocessing_images()
+                    
+                    # Log available stages
+                    self.logger.info(f"Available preprocessing stages: {list(preprocessing_images.keys())}")
+                    
+                    # Update results view with data and images
+                    self.results.update_results(results)
+                    
+                    # Map vision processor stages to result view stages
+                    stage_mapping = {
+                        "Original": "Original",
+                        "grayscale": "Grayscale",
+                        "enhance": "Enhanced",
+                        "text": "Text"
+                    }
+                    
+                    for src_stage, dest_stage in stage_mapping.items():
+                        if src_stage in preprocessing_images:
+                            self.logger.info(f"Updating stage {src_stage} -> {dest_stage}")
+                            self.results.update_preprocessing_image(dest_stage, preprocessing_images[src_stage])
+                        
+                    self.save_action.setEnabled(True)
+                    self.processing_status.finish_processing(True)
+                    
+                    # Auto-save if enabled
+                    if self.settings["general"]["auto_save"]:
+                        results_dir = Path("storage/results")
+                        results_dir.mkdir(parents=True, exist_ok=True)
+                        
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        json_path = results_dir / f"results_{timestamp}.json"
+                        
+                        self.results.save_results(str(json_path))
+                        self.statusBar().showMessage(f"Auto-saved to: {json_path}")
                 
-                # Auto-save if enabled
-                if self.settings["general"]["auto_save"]:
-                    results_dir = Path("storage/results")
-                    results_dir.mkdir(parents=True, exist_ok=True)
-                    
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    json_path = results_dir / f"results_{timestamp}.json"
-                    
-                    self.results.save_results(str(json_path))
-                    self.statusBar().showMessage(f"Auto-saved to: {json_path}")
+                self.lm_status.stop_loading_animation()
+                self.processing_complete = True
                 
             def on_processing_error(error):
-                self.logger.error(f"Processing error: {error}")
-                QMessageBox.critical(self, "Error", f"Processing failed: {error}")
-                self.lm_status.stop_loading_animation()
-                self.processing_status.finish_processing(False)
+                self._on_processing_error(error)
+                self.processing_complete = True
                 
             def on_processing_progress(stage_id, progress):
-                self.logger.debug(f"Processing progress: {stage_id} = {progress}")
-                self.processing_status.update_stage(stage_id, progress)
+                if not self.processing_complete:  # Only update if still processing
+                    self.logger.debug(f"Processing progress: {stage_id} = {progress}")
+                    self.processing_status.update_stage(stage_id, progress)
                 
             self.processing_thread.finished.connect(on_processing_finished)
             self.processing_thread.error.connect(on_processing_error)

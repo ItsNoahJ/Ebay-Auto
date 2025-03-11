@@ -1,152 +1,98 @@
 """
-Integration tests for vision processing pipeline.
-Tests the interaction between VHSVision, VisionProcessor and GUI components.
+Vision integration tests with timeout handling.
 """
-import os
+import time
 import pytest
-from pathlib import Path
-import cv2
-import numpy as np
+from unittest.mock import patch, MagicMock
 
-from src.vision.lmstudio_vision import VHSVision
+from src.vision.vhs_vision import VHSVision, TimeoutError
 from src.vision.processor import VisionProcessor
 from src.models.coordinator import ProcessingCoordinator
-from src.gui.main_window import MainWindow
-from PyQt6.QtCore import Qt
-from PyQt6.QtTest import QTest
+from tests.mocks import create_test_image
 
-@pytest.fixture
-def test_image_path(tmp_path):
-    """Create a test image with known properties."""
-    image_path = tmp_path / "test_vhs.jpg"
-    # Create a simple test image with text
-    img = np.ones((480, 640, 3), dtype=np.uint8) * 255
-    cv2.putText(img, "Test Movie", (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 2)
-    cv2.imwrite(str(image_path), img)
-    return str(image_path)
-
-@pytest.fixture
-def long_title_image_path(tmp_path):
-    """Create a test image with a very long title."""
-    image_path = tmp_path / "test_long_title.jpg"
-    img = np.ones((480, 640, 3), dtype=np.uint8) * 255
-    cv2.putText(img, "A Very Very Long Movie Title That Should Have Low Confidence", 
-                (20, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
-    cv2.imwrite(str(image_path), img)
-    return str(image_path)
-
-from .mocks import MockVisionProcessor, MockLongTitleProcessor, MockErrorProcessor
-
-def test_vision_processor_confidence(monkeypatch, test_image_path, long_title_image_path):
-    """Test confidence calculations through the vision processor."""
-    # Test normal title
-    normal_processor = MockVisionProcessor(save_debug=True)
-    normal_results = normal_processor.process_image(test_image_path)
-    assert normal_results["vision_data"]["confidence"]["title"] >= 0.7, "Normal title should have high confidence"
-    
-    # Test long title
-    long_processor = MockLongTitleProcessor(save_debug=True)
-    long_results = long_processor.process_image(long_title_image_path)
-    assert long_results["vision_data"]["confidence"]["title"] < 0.6, "Long title should have reduced confidence"
-
-def test_coordinator_vision_integration(monkeypatch, test_image_path):
-    """Test vision processing through coordinator."""
-    # Setup mock processor
-    mock_processor = MockVisionProcessor(save_debug=True)
-    monkeypatch.setattr("src.models.coordinator.VisionProcessor", lambda *args, **kwargs: mock_processor)
-    
-    coordinator = ProcessingCoordinator()
-    results = coordinator.process_tape(test_image_path)
-    
-    assert results["success"], "Processing should succeed"
-    assert "vision_data" in results, "Vision data should be present"
-    assert all(0 <= conf <= 1.0 for conf in results["vision_data"]["confidence"].values()), \
-        "Confidence scores should be decimal values between 0 and 1"
-    assert len(results.get("extracted_titles", [])) > 0, "Should extract at least one title"
-
-@pytest.mark.skip(reason="GUI tests require QApplication context")
-def test_gui_vision_confidence_handling(qtbot, monkeypatch, test_image_path, long_title_image_path):
-    """Test GUI handling of different confidence levels."""
-    # Setup mock processors
-    normal_processor = MockVisionProcessor(save_debug=True)
-    long_processor = MockLongTitleProcessor(save_debug=True)
-    
-    window = MainWindow()
-    qtbot.addWidget(window)
-    
-    # Test normal title processing
-    monkeypatch.setattr(window.coordinator, "vision_processor", normal_processor)
-    window.preview.load_image(test_image_path)
-    with qtbot.waitSignal(window.preview.image_loaded, timeout=1000):
-        pass
-    
-    window._process_image()
-    qtbot.wait(1000)
-    
-    assert window.save_action.isEnabled(), "Save should be enabled for high confidence result"
-    
-    # Test long title
-    window._clear()
-    monkeypatch.setattr(window.coordinator, "vision_processor", long_processor)
-    window.preview.load_image(long_title_image_path)
-    with qtbot.waitSignal(window.preview.image_loaded, timeout=1000):
-        pass
-    
-    window._process_image()
-    qtbot.wait(1000)
-    
-    assert window.save_action.isEnabled(), "Save should be enabled even for low confidence"
-
-def test_preprocessing_pipeline(monkeypatch, test_image_path):
-    """Test entire preprocessing pipeline."""
-    # Setup mock processor
-    processor = MockVisionProcessor(save_debug=True)
-    
-    # Process image
-    results = processor.process_image(test_image_path)
-    
-    # Verify expected fields are present
-    assert "vision_data" in results, "Should include vision data"
-    assert results.get("success", True), "Processing should succeed"
-    assert "extracted_titles" in results, "Should include extracted titles"
-    assert len(results["extracted_titles"]) > 0, "Should extract at least one title"
-    assert results["vision_data"]["confidence"]["title"] >= 0.7, "Normal title should have high confidence"
-
-def test_error_handling(monkeypatch, test_image_path):
-    """Test error handling through the pipeline."""
-    # Setup mock error processor
-    error_processor = MockErrorProcessor(save_debug=True)
-    monkeypatch.setattr("src.models.coordinator.VisionProcessor", lambda *args, **kwargs: error_processor)
-    
+def test_vision_timeout_handling():
+    """Test that vision processing properly handles timeouts."""
+    # Create test objects
+    vision = VHSVision(save_debug=False)
+    processor = VisionProcessor(save_debug=False)
     coordinator = ProcessingCoordinator()
     
-    # Setup mock error processor for nonexistent file
-    def mock_process_nonexistent(*args, **kwargs):
-        return {
-            "success": False,
-            "vision_data": {
-                "title": "",
-                "confidence": {"title": 0.0},
-                "source": {"title": "none"}
-            },
-            "error": "File not found",
-            "extracted_titles": []
-        }
-    coordinator.process_tape = mock_process_nonexistent
+    # Create a test image
+    test_image = create_test_image()
     
-    # Test with invalid image path
-    results = coordinator.process_tape("nonexistent.jpg")
-    assert not results["success"], "Should fail gracefully for missing image"
-    assert "error" in results, "Should include error message"
-    assert not results.get("extracted_titles"), "Should have no extracted titles"
+    # Test timeout in direct vision call
+    with pytest.raises(TimeoutError):
+        vision.extract_info(test_image, "title", timeout=1)
+        
+    # Test timeout propagation through processor
+    with pytest.raises(TimeoutError):
+        processor.process_image(test_image, timeout=1)
+        
+    # Test timeout handling in coordinator
+    results = coordinator.process_tape(test_image, debug=False, api_timeout=1)
+    assert not results["success"]
+    assert "timeout" in results["error"].lower()
+    assert results.get("error_type") == "timeout"
     
-    # Reset coordinator and test with simulated vision error
+def test_stage_completion_tracking():
+    """Test that stage completion is properly tracked."""
     coordinator = ProcessingCoordinator()
-    results = coordinator.process_tape(test_image_path)
-    assert not results["success"], "Should fail gracefully for vision error"
-    assert "error" in results, "Should include error message"
-    assert "vision_data" in results, "Should include vision data even on error"
-    assert all(val == "" for val in results["vision_data"].values() if isinstance(val, str)), \
-        "All text fields should be empty on error"
-    assert all(conf == 0.0 for conf in results["vision_data"]["confidence"].values()), \
-        "All confidence scores should be 0.0 on error"
+    progress_updates = {}
+    
+    def track_progress(stage: str, progress: float):
+        progress_updates[stage] = progress
+        
+    # Process test image
+    test_image = create_test_image()
+    results = coordinator.process_tape(
+        test_image,
+        debug=False,
+        progress_callback=track_progress
+    )
+    
+    # Verify stages were tracked
+    assert "grayscale_complete" in results
+    assert "resize_complete" in results
+    assert "enhance_complete" in results
+    assert "denoise_complete" in results
+    assert "text_complete" in results
+    
+    # Verify progress was tracked
+    assert "grayscale" in progress_updates
+    assert "resize" in progress_updates
+    assert "enhance" in progress_updates
+    assert "denoise" in progress_updates
+    assert "text" in progress_updates
+    
+def test_partial_completion_on_timeout():
+    """Test that completed stages are preserved on timeout."""
+    coordinator = ProcessingCoordinator()
+    progress_updates = {}
+    completed_stages = set()
+    
+    def track_progress(stage: str, progress: float):
+        progress_updates[stage] = progress
+        if progress == 1.0:
+            completed_stages.add(stage)
+            
+    # Process with short timeout
+    test_image = create_test_image()
+    results = coordinator.process_tape(
+        test_image,
+        debug=False,
+        progress_callback=track_progress,
+        api_timeout=1
+    )
+    
+    # Verify early stages completed
+    assert not results["success"]
+    assert results.get("error_type") == "timeout"
+    
+    # Early stages should be marked complete
+    for stage in ["grayscale", "resize", "enhance", "denoise"]:
+        stage_key = f"{stage}_complete"
+        if stage_key in results:
+            assert results[stage_key] == (stage in completed_stages)
+    
+    # Text stage should not be complete
+    assert not results.get("text_complete", False)

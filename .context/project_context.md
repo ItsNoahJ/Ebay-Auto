@@ -6,9 +6,11 @@ The VHS Auto project processes VHS tape covers and audio media covers, using com
 ## Core Components
 
 ### Vision Processing
-- Image preprocessing pipeline with adaptive sizing and quality optimization
-- Robust error handling and confidence scoring
-- Mock testing infrastructure for vision components
+- Advanced preprocessing pipeline with multi-stage denoising and edge preservation
+- FastCLAHE contrast enhancement and statistical normalization
+- Intelligent text region detection with confidence scoring
+- Comprehensive test suite with performance benchmarks
+- High-resolution processing (1600px width) optimized for text extraction
 
 ### Media Type Processing
 - Movie processing via TMDB API
@@ -23,10 +25,11 @@ The VHS Auto project processes VHS tape covers and audio media covers, using com
 ## Recent Improvements
 
 ### Vision Pipeline
-- Updated coordinator implementation
-- Enhanced error handling
-- Improved mock data structures
-- Comprehensive integration tests
+- Modular preprocessing system with specialized components
+- Enhanced text region detection and validation
+- Improved confidence scoring with category-specific rules
+- Comprehensive error handling and debug logging
+- Extensive test coverage for all components
 
 ### Testing Coverage
 - Mock implementation for vision and API calls
@@ -46,10 +49,12 @@ The VHS Auto project processes VHS tape covers and audio media covers, using com
    - Progress tracking
    - Error messaging improvements
 
-2. Preprocessing Optimization
-   - Efficiency improvements
-   - Configuration options
-   - Caching implementation
+2. Vision System Improvements
+   - Neural-based denoising integration
+   - Dynamic parameter optimization
+   - Layout-aware processing
+   - Real-time quality assessment
+   - Performance optimization for batch processing
 
 3. Testing Extensions
    - Preprocessing coverage
@@ -59,5 +64,7 @@ The VHS Auto project processes VHS tape covers and audio media covers, using com
 ## Dependencies
 - Python 3.13+
 - PyQt6 for GUI
-- OpenCV for image processing
+- OpenCV 4.x with contrib modules for advanced image processing
+- LM Studio for vision-language processing
 - External APIs: TMDB, Discogs
+- NumPy for efficient array operations

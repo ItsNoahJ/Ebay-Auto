@@ -1,44 +1,95 @@
 """
-PyTest configuration file.
+Test configuration and shared fixtures.
 """
-import os
 import pytest
-from pathlib import Path
-import requests
-from src.config.settings import STORAGE_PATHS
+import numpy as np
+from unittest.mock import Mock
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QPixmap
 
-# Set mock environment variables for testing
-os.environ["TESSERACT_CMD"] = "mock_tesseract"
-os.environ["TMDB_API_KEY"] = "mock_tmdb_key"
-
-@pytest.fixture(autouse=True, scope="session")
-def setup_test_storage():
-    """Create test storage directories."""
-    for path in STORAGE_PATHS.values():
-        path.mkdir(parents=True, exist_ok=True)
-    yield
-    # Could optionally clean up test directories here if needed
+@pytest.fixture(scope="session")
+def qapp():
+    """Create QApplication instance."""
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+    return app
 
 @pytest.fixture
-def requires_lmstudio(request):
-    """Check if LM Studio is running before running tests that require it."""
+def qtbot(qapp):
+    """Create QtBot instance if pytest-qt is available."""
     try:
-        response = requests.get("http://127.0.0.1:1234/v1/models")
-        if response.status_code != 200:
-            pytest.skip("LM Studio is not responding correctly")
-    except requests.exceptions.ConnectionError:
-        pytest.skip("LM Studio is not running")
-    return True
+        from pytestqt.qt_compat import qt_api
+        return qt_api.QtBot(qapp)
+    except ImportError:
+        # Return a minimal mock for non-GUI tests
+        class MinimalQtBot:
+            def addWidget(self, _): pass
+            def mouseClick(self, *args, **kwargs): pass
+            def keyClicks(self, *args, **kwargs): pass
+            def waitActive(self, _): pass
+            def waitExposed(self, _): pass
+            def wait(self, _): pass
+        return MinimalQtBot()
+    
+@pytest.fixture
+def mock_vision():
+    """Create mock vision instance."""
+    mock = Mock()
+    mock.check_models = Mock(return_value=True)
+    mock.available_models = ["model1", "model2"]
+    mock.extract_text = Mock(return_value={
+        "success": True,
+        "text": "Sample text",
+        "confidence": 0.9
+    })
+    return mock
 
-def pytest_configure(config):
-    """Add LM Studio marker."""
-    config.addinivalue_line(
-        "markers",
-        "requires_lmstudio: mark test as requiring LM Studio to be running"
-    )
+@pytest.fixture
+def test_results():
+    """Create test OCR results."""
+    return {
+        "success": True,
+        "vision_data": {
+            "title": "Test Title",
+            "year": "2025",
+            "runtime": "120 min",
+            "confidence": {
+                "title": 0.95,
+                "year": 0.85,
+                "runtime": 0.75
+            }
+        }
+    }
 
-def pytest_collection_modifyitems(config, items):
-    """Handle LM Studio marker."""
-    for item in items:
-        if "requires_lmstudio" in item.keywords:
-            item.fixturenames.append("requires_lmstudio")
+@pytest.fixture
+def invalid_results():
+    """Create test invalid results."""
+    return {
+        "success": False,
+        "error": "Test error message"
+    }
+
+@pytest.fixture
+def mock_qimage():
+    """Create mock QImage."""
+    mock = Mock()
+    mock.scaled = Mock(return_value=mock)
+    mock.size = Mock(return_value=(100, 100))
+    return mock
+
+@pytest.fixture
+def mock_qpixmap():
+    """Create mock QPixmap."""
+    mock = Mock()
+    mock.scaled = Mock(return_value=mock)
+    mock.size = Mock(return_value=(100, 100))
+    mock.isNull = Mock(return_value=False)
+    mock.width = Mock(return_value=100)
+    mock.height = Mock(return_value=100)
+    return mock
+
+@pytest.fixture
+def mock_preprocessed_image():
+    """Create mock preprocessed image as numpy array."""
+    return np.zeros((100, 100, 3), dtype=np.uint8)

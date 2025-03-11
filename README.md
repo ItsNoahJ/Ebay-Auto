@@ -56,12 +56,17 @@ python run_gui.py path/to/image.jpg
 
 ## Features
 
-- VHS cover text extraction using LM Studio vision model
+- VHS cover text extraction using LM Studio vision model with:
+  - Adaptive timeout handling for reliable processing
+  - Real-time progress tracking for each processing stage
+  - Graceful error recovery and partial result handling
+  - Performance optimization with timeouts and early completion
 - Optional metadata enrichment:
   - Movie information lookup via TMDB API
   - Music information lookup via Discogs API
+  - Automatic fallback to alternate sources
 - Debug visualization of processing steps
-- Results export to JSON
+- Results export to JSON with confidence scores
 
 ## Configuration
 
@@ -89,14 +94,43 @@ Note: Both APIs are optional. The application will work without them but won't f
 
 ## Troubleshooting
 
+### Advanced Configuration
+
+The application includes several performance-related settings that can be configured:
+
+1. Processing Timeouts
+   - Set maximum processing time per image
+   - Configure stage-specific timeouts
+   - Adjust API request timeouts
+   - Default: 30 seconds total, adjustable in settings
+
+2. Quality vs Speed
+   - Balance processing quality against speed
+   - Customize confidence thresholds
+   - Configure preprocessing parameters
+   - Enable/disable specific enhancement stages
+
+3. Error Handling
+   - Set retry attempts for failed operations
+   - Configure fallback options
+   - Adjust confidence thresholds for API backup
+   - Customize error recovery behavior
+
 ### Common Issues
 
 1. "Could not connect to LM Studio"
    - Make sure LM Studio is running
    - Verify the model is loaded
    - Check if the API server is running on port 1234
+   - Try increasing the connection timeout in settings
 
-2. "API integration disabled"
+2. "Processing timeout"
+   - Adjust timeout settings in the configuration
+   - Consider reducing image resolution
+   - Try disabling intensive preprocessing steps
+   - Check system resources and CPU usage
+
+3. "API integration disabled"
    - Open Settings dialog and verify API keys
    - Check internet connection
    - Test connection using the "Test Key" buttons

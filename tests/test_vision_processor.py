@@ -1,157 +1,132 @@
 """
-Unit tests for vision processing module.
+Tests for VisionProcessor with timeout handling.
 """
 import pytest
 import cv2
 import numpy as np
-from unittest.mock import Mock, call
+from unittest.mock import patch, MagicMock
 
+from src.vision.preprocessing import TimeoutError
 from src.vision.processor import VisionProcessor
+from src.vision.vhs_vision import VHSVision
+from tests.mocks import (
+    create_test_image,
+    MockVHSVisionWithTimeout,
+    PreprocessorWithTimeout
+)
 
 @pytest.fixture
-def processor():
-    """Create a VisionProcessor instance for testing."""
-    return VisionProcessor(save_debug=False)
+def mock_api():
+    """Mock successful API connection."""
+    mock_vision = VHSVision()
+    mock_vision.check_models = MagicMock(return_value=True)
+    mock_vision._make_api_request = MagicMock(return_value={"data": [{"id": "test-model"}]})
+    return mock_vision
 
 @pytest.fixture
-def sample_vhs_image(tmp_path):
-    """Create a sample VHS cover image for testing."""
-    # Create a test image with some text-like features
-    image = np.zeros((300, 200, 3), dtype=np.uint8)
-    
-    # Add a white rectangle for title area
-    cv2.rectangle(image, (20, 20), (180, 60), (255, 255, 255), -1)
-    # Add some simulated text
-    cv2.putText(image, "TEST TITLE", (30, 45), 
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
-    
-    # Save the image
-    image_path = tmp_path / "test_vhs.jpg"
-    cv2.imwrite(str(image_path), image)
-    
-    return str(image_path)
+def processor(mock_api):
+    """Create VisionProcessor with mocked API."""
+    processor = VisionProcessor(save_debug=False)
+    return processor
 
-@pytest.mark.unit
-def test_process_image_progress_tracking(processor, sample_vhs_image):
-    """Test that process_image correctly reports progress through callbacks."""
-    progress_callback = Mock()
+def test_processor_preprocessing_timeout(processor):
+    """Test timeout during preprocessing stage."""
+    # Configure processor with slow preprocessor
+    processor.vision = MockVHSVisionWithTimeout(processing_delay=3)
+    processor.vision.pipeline = PreprocessorWithTimeout(processing_delay=3)
+    processor.vision.timeout = 1  # Set timeout
     
-    results = processor.process_image(sample_vhs_image, progress_callback=progress_callback)
-    
-    # Verify callback was called for each stage
-    expected_calls = [
-        # Initial grayscale progress
-        call("grayscale", 0.0),
-        call("grayscale", 0.5),
-        call("grayscale", 1.0),
+    # Process with timeout shorter than delay
+    with pytest.raises(TimeoutError):
+        processor.extract_text(create_test_image())
         
-        # Resize progress
-        call("resize", 0.0),
-        call("resize", 1.0),
+def test_processor_extraction_timeout(processor):
+    """Test timeout during text extraction stage."""
+    # Configure processor with slow vision
+    processor.vision = MockVHSVisionWithTimeout(processing_delay=3)
+    processor.vision.timeout = 1  # Set timeout
+    
+    # Process with timeout shorter than delay
+    with pytest.raises(TimeoutError):
+        processor.extract_text(create_test_image())
         
-        # Enhancement progress
-        call("enhance", 0.0),
-        call("enhance", 1.0),
+def test_processor_partial_completion(processor):
+    """Test that early stages complete before timeout."""
+    # Create processor with slow vision but fast preprocessing
+    processor.vision = MockVHSVisionWithTimeout(processing_delay=3)
+    
+    # Set up test image
+    test_image = create_test_image()
+    
+    # Process with timeout
+    try:
+        processor.vision.timeout = 1  # Set timeout
+        processor.extract_text(test_image)
+    except TimeoutError:
+        # Verify preprocessing images were stored
+        for stage in ["Grayscale", "Enhanced"]:
+            img = processor.vision.preprocessing_images.get(stage)
+            assert img is not None, f"{stage} image missing"
+            assert isinstance(img, np.ndarray), f"{stage} image wrong type"
         
-        # Denoising progress
-        call("denoise", 0.0),
-        call("denoise", 1.0),
-        
-        # Text extraction progress (multiple updates as categories are processed)
-        call("text", 0.0),
-    ]
+def test_processor_success_no_timeout(processor):
+    """Test successful processing without timeout."""
+    processor.vision = MockVHSVisionWithTimeout(processing_delay=1)
     
-    # The text extraction will have additional calls as categories are processed
-    # Just verify the key stages were called in order
-    actual_calls = progress_callback.call_args_list
+    # Process with sufficient timeout
+    result = processor.extract_text(create_test_image())
     
-    # Check that all expected calls are present in order
-    for expected, actual in zip(expected_calls, actual_calls):
-        assert expected == actual, f"Expected {expected}, got {actual}"
-    
-    # Verify we got a final text progress of 1.0
-    assert call("text", 1.0) in actual_calls
-    
-    # Verify the results contain expected fields
-    assert isinstance(results, dict)
-    assert "confidence" in results
-    assert "extracted_data" in results
-    assert isinstance(results.get("confidence", {}), dict)
+    assert result["success"]
+    assert result["vision_data"]["title"] == "Mock Title"
+    assert result["vision_data"]["confidence"]["title"] >= 0.8
 
-@pytest.mark.unit
-def test_process_image_handles_missing_callback(processor, sample_vhs_image):
-    """Test that process_image works without a progress callback."""
-    results = processor.process_image(sample_vhs_image)  # No callback
-    assert isinstance(results, dict)
-    assert "confidence" in results
+def test_processor_confidence_tracking(processor):
+    """Test that confidence scores are tracked through timeout."""
+    processor.vision = MockVHSVisionWithTimeout(processing_delay=1)
+    
+    # Process image
+    result = processor.extract_text(create_test_image())
+    
+    # Verify confidence scores exist
+    assert "vision_data" in result
+    assert "confidence" in result["vision_data"]
+    confidence = result["vision_data"]["confidence"]
+    assert isinstance(confidence, dict)
+    
+    # At least title should have confidence
+    assert confidence.get("title", 0) > 0
 
-@pytest.mark.unit
-def test_process_image_error_handling(processor):
-    """Test error handling in process_image."""
-    progress_callback = Mock()
+def test_api_error_handling(processor):
+    """Test handling of API errors."""
+    # Configure vision to return error
+    processor.vision = MockVHSVisionWithTimeout(processing_delay=1)
+    processor.vision.extract_text = MagicMock(return_value={
+        "success": False,
+        "error": "API Connection Error"
+    })
     
-    # Try to process a non-existent image
-    results = processor.process_image(
-        "nonexistent.jpg",
-        progress_callback=progress_callback
-    )
+    # Process image - should handle API error gracefully
+    result = processor.extract_text(create_test_image())
     
-    assert "error" in results
-    assert not results.get("success", False)
-    
-    # Verify callback was still called with initial stage
-    progress_callback.assert_called_with("grayscale", 0.0)
+    # Should indicate error
+    assert not result["success"]
+    assert "error" in result
 
-@pytest.mark.unit
-def test_process_image_with_invalid_image(processor, tmp_path):
-    """Test handling of invalid/corrupt image files."""
-    # Create an invalid image file
-    invalid_path = tmp_path / "invalid.jpg"
-    with open(invalid_path, "w") as f:
-        f.write("not an image")
+def test_preprocessing_image_storage(processor):
+    """Test preprocessing image storage and retrieval."""
+    # Create test grayscale image
+    gray_image = np.zeros((100, 100), dtype=np.uint8)
     
-    progress_callback = Mock()
-    results = processor.process_image(str(invalid_path), progress_callback=progress_callback)
-    
-    assert "error" in results
-    assert not results.get("success", False)
-    
-    # Should still get initial progress call
-    progress_callback.assert_called_with("grayscale", 0.0)
-
-@pytest.mark.unit
-def test_process_image_success_validation(processor, sample_vhs_image):
-    """Test successful processing includes all required fields."""
-    results = processor.process_image(sample_vhs_image)
-    
-    assert results.get("success", False)
-    assert isinstance(results.get("confidence", {}), dict)
-    assert isinstance(results.get("extracted_data", {}), dict)
-    assert isinstance(results.get("source", {}), dict)
-    
-    # Check that confidence scores are normalized
-    for score in results.get("confidence", {}).values():
-        assert 0.0 <= score <= 1.0, "Confidence scores should be normalized"
-
-@pytest.mark.unit
-def test_api_backup_triggering(processor, sample_vhs_image, monkeypatch):
-    """Test that API backup is triggered for low confidence results."""
-    # Mock the _needs_api_backup method to always return True
-    monkeypatch.setattr(processor, "_needs_api_backup", lambda x: True)
-    
-    # Create a mock for the API call
-    mock_api_result = {
-        "title": "API Title",
-        "year": "2024",
-        "runtime": "120",
-        "confidence": 0.85
+    # Should handle both 2D and 3D images
+    processor.vision = MockVHSVisionWithTimeout(processing_delay=0)
+    processor.vision.preprocessing_images = {
+        "Grayscale": gray_image,
+        "Enhanced": cv2.cvtColor(gray_image, cv2.COLOR_GRAY2BGR)
     }
-    monkeypatch.setattr(
-        "src.enrichment.api_client.search_movie_details",
-        lambda x: mock_api_result
-    )
     
-    results = processor.process_image(sample_vhs_image)
+    # Process image
+    result = processor.extract_text(create_test_image())
     
-    # Verify that API data was used
-    assert any(source == "api" for source in results.get("source", {}).values())
+    # Verify images were stored
+    assert "Grayscale" in processor.vision.preprocessing_images
+    assert "Enhanced" in processor.vision.preprocessing_images

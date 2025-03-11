@@ -77,7 +77,7 @@ class ConnectionStatusWidget(QWidget):
             print("\nChecking LM Studio connection...")
             
             # First try to connect to LM Studio API
-            response = requests.get("http://127.0.0.1:1234/v1/models", timeout=2)
+            response = requests.get("http://127.0.0.1:1234/v1/models", timeout=5)
             print(f"Models endpoint response: {response.status_code}")
             
             if response.status_code == 200:
@@ -181,6 +181,8 @@ class ConnectionStatusWidget(QWidget):
 class ProcessingStatusWidget(QWidget):
     """Widget showing image processing status and progress."""
     
+    status_changed = pyqtSignal(str, str)  # Emits (status, error_message)
+    
     def __init__(self, parent=None):
         """Initialize widget."""
         super().__init__(parent)
@@ -209,8 +211,11 @@ class ProcessingStatusWidget(QWidget):
         layout = QVBoxLayout(self.container)
         layout.setSpacing(8)
         
-        # Add header section
-        header_layout = QHBoxLayout()
+        # Add header section with status and error display
+        header_layout = QVBoxLayout()
+        
+        # Status line
+        status_line = QHBoxLayout()
         
         # Status indicator
         self.status_indicator = QLabel()
@@ -218,16 +223,25 @@ class ProcessingStatusWidget(QWidget):
         self.status_indicator.setStyleSheet(
             "QLabel { border-radius: 6px; background-color: gray; }"
         )
-        header_layout.addWidget(self.status_indicator)
+        status_line.addWidget(self.status_indicator)
         
         # Status label
         self.status_label = QLabel("Ready")
-        header_layout.addWidget(self.status_label)
+        status_line.addWidget(self.status_label)
         
         # Time elapsed
         self.time_label = QLabel("00:00")
         self.time_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-        header_layout.addWidget(self.time_label)
+        status_line.addWidget(self.time_label)
+        
+        header_layout.addLayout(status_line)
+        
+        # Error message label (hidden by default)
+        self.error_label = QLabel()
+        self.error_label.setStyleSheet("QLabel { color: red; }")
+        self.error_label.setWordWrap(True)
+        self.error_label.hide()
+        header_layout.addWidget(self.error_label)
         
         layout.addLayout(header_layout)
         
@@ -294,6 +308,7 @@ class ProcessingStatusWidget(QWidget):
         self.start_time = None
         self.timer.stop()
         self.time_label.setText("00:00")
+        self.error_label.hide()
         
         for stage_data in self.stage_bars.values():
             stage_data["progress"].setValue(0)
@@ -304,6 +319,7 @@ class ProcessingStatusWidget(QWidget):
     def start_processing(self):
         """Start processing state and timer."""
         self._update_status("processing")
+        self.error_label.hide()
         self.start_time = datetime.now()
         self.timer.start(1000)  # Update every second
         
@@ -315,26 +331,53 @@ class ProcessingStatusWidget(QWidget):
             self.stage_bars[stage_id]["percent"].setText(f"{percent}%")
             self._update_memory_usage()
             
-    def finish_processing(self, success: bool = True):
-        """Complete processing and show final status."""
+    def finish_processing(self, success: bool = True, error_type: str = None, error_msg: str = None):
+        """
+        Complete processing and show final status.
+        
+        Args:
+            success: Whether processing completed successfully
+            error_type: Type of error if failed ("error" or "timeout")
+            error_msg: Optional error message to display
+        """
         self.timer.stop()
-        self._update_status("success" if success else "error")
+        
+        if success:
+            # Mark all remaining stages as complete
+            for stage_data in self.stage_bars.values():
+                if stage_data["progress"].value() < 100:
+                    stage_data["progress"].setValue(100)
+                    stage_data["percent"].setText("100%")
+            self._update_status("success")
+            self.error_label.hide()
+        else:
+            # Reset incomplete stages to 0
+            for stage_data in self.stage_bars.values():
+                if stage_data["progress"].value() < 100:
+                    stage_data["progress"].setValue(0)
+                    stage_data["percent"].setText("0%")
+                    
+            status = error_type if error_type in ["error", "timeout"] else "error"
+            self._update_status(status, error_msg)
+            
         self._update_memory_usage()
         
-    def _update_status(self, status: str):
+    def _update_status(self, status: str, error_msg: str = None):
         """Update status indicator and label."""
         status_colors = {
             "ready": QColor(128, 128, 128),      # Gray
             "processing": QColor(0, 120, 255),    # Blue
             "success": QColor(0, 255, 0),         # Green
-            "error": QColor(255, 0, 0)           # Red
+            "error": QColor(255, 0, 0),          # Red
+            "timeout": QColor(255, 165, 0)       # Orange
         }
         
         status_texts = {
             "ready": "Ready",
             "processing": "Processing...",
             "success": "Complete",
-            "error": "Error"
+            "error": error_msg or "Error",
+            "timeout": "API Timeout"
         }
         
         color = status_colors.get(status, QColor(128, 128, 128))
@@ -342,6 +385,15 @@ class ProcessingStatusWidget(QWidget):
             f"QLabel {{ border-radius: 6px; background-color: {color.name()}; }}"
         )
         self.status_label.setText(status_texts.get(status, "Ready"))
+        
+        if error_msg and status in ["error", "timeout"]:
+            self.error_label.setText(error_msg)
+            self.error_label.show()
+        else:
+            self.error_label.hide()
+            
+        # Emit status changed signal
+        self.status_changed.emit(status, error_msg or "")
         
     def _update_elapsed_time(self):
         """Update the elapsed time display."""

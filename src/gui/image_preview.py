@@ -41,16 +41,16 @@ class ImagePreview(QLabel):
         # Enable drag and drop
         self.setAcceptDrops(True)
         
-        # Set placeholder text
-        self.setText("Drop VHS cover image here\nor click Open Image")
+        # Set placeholder text and style
+        self.setText("Drag image here or click Open")
         self.setStyleSheet("""
             QLabel {
-                color: #666;
-                font-size: 14px;
+                color: rgba(0, 0, 0, 0.5);
+                font-size: 13px;
                 padding: 20px;
-                border: 2px dashed #ccc;
-                border-radius: 8px;
-                background: #f8f9fa;
+                border: 1px solid rgba(0, 0, 0, 0.1);
+                border-radius: 4px;
+                background: white;
             }
         """)
         
@@ -148,11 +148,18 @@ class ImagePreview(QLabel):
         self.current_path = None
         super().clear()
         
-        # Reset placeholder
-        self.setText("Drop VHS cover image here\nor click Open Image")
-        self.setStyleSheet(
-            "QLabel { color: #666; font-size: 14px; padding: 20px; }"
-        )
+        # Reset placeholder with minimal style
+        self.setText("Drag image here or click Open")
+        self.setStyleSheet("""
+            QLabel {
+                color: rgba(0, 0, 0, 0.5);
+                font-size: 13px;
+                padding: 20px;
+                border: 1px solid rgba(0, 0, 0, 0.1);
+                border-radius: 4px;
+                background: white;
+            }
+        """)
         
     def dragEnterEvent(self, event: QDragEnterEvent):
         """Handle drag enter event."""
@@ -167,7 +174,7 @@ class ImagePreview(QLabel):
                         color: #666;
                         font-size: 14px;
                         padding: 20px;
-                        border: 2px dashed #28a745;
+                        border: 1px solid #28a745;
                         border-radius: 8px;
                         background: #f8f9fa;
                     }
@@ -181,7 +188,7 @@ class ImagePreview(QLabel):
                 color: #666;
                 font-size: 14px;
                 padding: 20px;
-                border: 2px dashed #ccc;
+                border: 1px solid rgba(0, 0, 0, 0.1);
                 border-radius: 8px;
                 background: #f8f9fa;
             }

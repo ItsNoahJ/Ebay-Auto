@@ -17,11 +17,12 @@ def validate_settings() -> Dict[str, Any]:
     settings['RESULTS_DIR'] = RESULTS_DIR
     settings['DEBUG_DIR'] = DEBUG_DIR
     
-    # Validate Tesseract
+    # Validate Tesseract (make it optional)
     tesseract_path = os.environ.get('TESSERACT_PATH', TESSERACT_PATH)
-    if not os.path.exists(tesseract_path):
-        raise ValueError(f"Tesseract not found at: {tesseract_path}")
-    settings['TESSERACT_PATH'] = tesseract_path
+    if os.path.exists(tesseract_path):
+        settings['TESSERACT_PATH'] = tesseract_path
+    else:
+        settings['TESSERACT_PATH'] = None
     
     # Validate API keys (both are optional)
     settings['TMDB_API_KEY'] = TMDB_API_KEY
@@ -80,8 +81,6 @@ if tesseract_dir not in os.environ["PATH"]:
 if os.path.exists(TESSERACT_PATH):
     os.environ['TESSERACT_CMD'] = TESSERACT_PATH
     pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
-else:
-    raise ValueError(f"Tesseract not found at: {TESSERACT_PATH}")
 
 # GUI Settings
 GUI_SETTINGS = {

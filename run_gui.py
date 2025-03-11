@@ -15,7 +15,7 @@ def check_dependencies():
         import numpy
         return True
     except ImportError as e:
-        print(f"Missing dependency: {e}")
+        print("Missing dependency: {}".format(e))
         print("\nPlease install required dependencies:")
         print("pip install -r requirements.txt")
         return False

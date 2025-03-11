@@ -8,11 +8,13 @@
 - Add fuzzy matching for movie titles
 - Create manual override interface for ambiguous matches
 
-### 2. OCR System Improvement
-- Implement additional preprocessing filters for better text recognition
-- Create custom training data for VHS tape text formats
-- Add confidence scoring for extracted text
-- Build manual correction interface for low-confidence results
+### 2. Vision System Evolution
+- Implement neural-based denoising for enhanced text clarity
+- Optimize dynamic parameter tuning based on image characteristics
+- Develop layout-aware processing for better region detection
+- Create automated quality assessment system
+- Implement batch processing optimization for multiple covers
+- Add visual debug output for preprocessing steps
 
 ### 3. Database Implementation
 **Priority: High**
@@ -92,14 +94,26 @@ CREATE TABLE processing_results (
 ### 2. Image Processing Pipeline
 ```mermaid
 graph TD
-    A[Capture Image] --> B[Preprocess]
-    B --> C[OCR]
-    B --> D[Condition Assessment]
-    C --> E[Metadata Extraction]
-    E --> F[TMDB Lookup]
-    D --> G[Quality Score]
-    F --> H[Database Storage]
-    G --> H
+    A[Capture Image] --> B[Initial Processing]
+    B --> C[Multi-stage Denoising]
+    C --> D[FastCLAHE Enhancement]
+    D --> E[Statistical Normalization]
+    E --> F[Region Detection]
+    F --> G[Text Extraction]
+    G --> H[Confidence Scoring]
+    H --> I{Confidence Check}
+    I -->|High| J[Metadata Extraction]
+    I -->|Low| K[Debug Analysis]
+    J --> L[TMDB Lookup]
+    K --> M[Manual Review]
+    L --> N[Database Storage]
+    M --> N
+    
+    style C fill:#e1f5fe
+    style D fill:#e1f5fe
+    style E fill:#e1f5fe
+    style F fill:#e8f5e9
+    style H fill:#fff3e0
 ```
 
 ### 3. API Integration Strategy
@@ -141,5 +155,13 @@ graph TD
 ### Success Criteria
 1. Database can store and retrieve all necessary data
 2. TMDB lookups achieve >90% accuracy
-3. OCR accuracy improves to >85%
+3. OCR accuracy standards:
+   - Title detection: >95% accuracy
+   - Year detection: >90% confidence for valid years
+   - Runtime detection: >85% confidence for valid durations
+   - Rating detection: >95% confidence for MPAA ratings
 4. Camera can be controlled programmatically
+5. Processing pipeline:
+   - Text clarity improvement: >40%
+   - Edge preservation in noisy images: >80%
+   - Average processing time under 2 seconds at 1600px width

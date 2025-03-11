@@ -3,41 +3,25 @@
 ## [Unreleased]
 
 ### Added
-- Enhanced test infrastructure:
-  - Comprehensive mock data structures
-  - Integration test coverage
-  - Error handling validation
-- New ProcessingStatusWidget planned:
-  - Progress bars for preprocessing
-  - Time elapsed tracking
-  - Memory usage monitoring
-- Results View enhancements planned:
-  - Color-coded confidence indicators
-  - Detailed error messaging
-  - Visual preprocessing comparisons
+- Complete visualization of image preprocessing pipeline in GUI
+- Support for both color and grayscale image display
+- Real-time stage-by-stage processing view
 
 ### Changed
-- Improved coordinator implementation:
-  - Better error handling
-  - Proper response validation
-  - Fallback mechanisms
-- Updated preprocessing pipeline:
-  - Added adaptive image sizing
-  - Optimized CLAHE parameters
-  - Enhanced text clarity
-- Updated documentation:
-  - Streamlined vision processing docs
-  - Updated roadmap
-  - Simplified OCR challenges
+- Enhanced PreprocessingPipeline to store intermediate results
+- Updated VHSVision to preserve preprocessing stages
+- Improved coordinator's image conversion handling
+- Streamlined ResultsView interface for preprocessing stages
 
 ### Fixed
-- Coordinator response structure
-- Mock data handling
-- Error propagation
+- Grayscale image display issues in Qt conversion
+- Missing preprocessing stages in GUI
+- Stage name synchronization across components
 
-## [1.0.0] - 2024-02-28
-### Added
-- Initial release with basic VHS cover text extraction
-- LM Studio integration
-- GUI interface
-- Basic preprocessing pipeline
+### Technical
+- Added proper error handling for image format conversion
+- Improved logging of preprocessing stages
+- Optimized memory usage for image storage
+
+## [Previous Versions]
+[Previous changelog entries would be preserved here]

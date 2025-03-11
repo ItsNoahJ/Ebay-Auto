@@ -1,191 +1,102 @@
 """
-Media processing coordinator.
+ProcessingCoordinator handles high-level coordination of image processing and OCR.
 """
-from datetime import datetime
-import json
 import logging
-import os
-from pathlib import Path
-from typing import Optional, Callable, Dict, Any
+from typing import Dict, Any, Optional
+import numpy as np
+from PyQt6.QtGui import QImage, QPixmap
 
-import cv2
-
-from ..vision.processor import VisionProcessor
-from ..enrichment.api_client import (
-    search_movie_details, 
-    search_audio_details,
-    create_empty_movie_result,
-    create_empty_audio_result
-)
-from ..config.settings import STORAGE_PATHS
+from src.vision.processor import VisionProcessor
 
 logger = logging.getLogger(__name__)
 
 class ProcessingCoordinator:
-    """Coordinates the media processing pipeline."""
+    """Coordinates image processing, OCR extraction, and result management."""
     
     def __init__(self):
         """Initialize coordinator."""
-        # Initialize vision processor with debug output enabled
-        self.vision_processor = VisionProcessor(save_debug=True)
+        self.processor = VisionProcessor(save_debug=True)
+        self.current_preprocessing_images = {}
         
-    def process_tape(
-        self,
-        image_path: str,
-        media_type: str = "MOVIE",
-        debug: bool = False,
-        progress_callback: Optional[Callable[[str, float], None]] = None
-    ) -> Dict[str, Any]:
-        """
-        Process a media cover image.
+    def _convert_cv_to_qt(self, image: np.ndarray) -> QPixmap:
+        """Convert OpenCV image to Qt pixmap.
         
         Args:
-            image_path: Path to image file
-            media_type: Type of media (MOVIE, CD, VINYL, CASSETTE)
-            debug: Enable debug visualization
-            progress_callback: Optional callback for progress updates
+            image: OpenCV image as numpy array (grayscale or color)
             
         Returns:
-            Dict containing processing results
+            QPixmap of the image
         """
-        logger.info(f"Processing {image_path}")
+        height, width = image.shape[:2]
+
+        # Handle grayscale images
+        if len(image.shape) == 2:
+            bytes_per_line = width
+            # Create QImage with grayscale format
+            q_img = QImage(image.data, width, height,
+                         bytes_per_line, QImage.Format.Format_Grayscale8)
+        else:
+            bytes_per_line = 3 * width
+            # Convert to RGB for Qt
+            image_rgb = image[..., ::-1].copy()
+            q_img = QImage(image_rgb.data, width, height,
+                          bytes_per_line, QImage.Format.Format_RGB888)
+
+        return QPixmap.fromImage(q_img)
         
-        def update_progress(stage: str, progress: float):
-            """Helper to update progress if callback exists."""
-            if progress_callback:
-                progress_callback(stage, progress)
+    def process_tape(self, image: np.ndarray) -> Dict[str, Any]:
+        """Process VHS tape image and extract information.
         
-        # Initialize results
-        results = {
-            "success": False,
-            "timestamp": datetime.now().isoformat(),
-            "image_path": image_path,
-            "media_type": media_type,
-            "extracted_titles": [],
-            "movie_data": create_empty_movie_result() if media_type == "MOVIE" else None,
-            "audio_data": create_empty_audio_result() if media_type in ["CD", "VINYL", "CASSETTE"] else None,
-            "vision_data": None,
-            "debug_image": None,
-            "results_path": None
-        }
-        
+        Args:
+            image: Input image as numpy array
+            
+        Returns:
+            Dict containing extracted text and metadata
+        """
         try:
-            # Check if image exists
-            if not os.path.exists(image_path):
-                results["error"] = f"Image not found: {image_path}"
-                return results
+            # Run vision processing
+            raw_result = self.processor.extract_text(image)
+            
+            # Store preprocessing images for display
+            if hasattr(self.processor, 'preprocessing_images'):
+                self.current_preprocessing_images = self.processor.preprocessing_images.copy()
+            
+            # Structure the results in the format expected by ResultsView
+            result = {
+                "success": raw_result.get("success", False),
+                "vision_data": {
+                    "title": raw_result.get("text", ""),
+                    "confidence": {
+                        "title": 0.8,  # Default confidence for now
+                    }
+                }
+            }
+            
+            if "error" in raw_result:
+                result["error"] = raw_result["error"]
                 
-            # Process image with vision model (this will handle preprocessing progress)
-            vision_results = self.vision_processor.process_image(
-                image_path,
-                progress_callback=progress_callback
-            )
+            return result
             
-            # Update results with vision data and status
-            results["vision_data"] = vision_results.get("vision_data", {})
-            results["success"] = vision_results.get("success", False)
-            
-            # Copy error message if present
-            if "error" in vision_results:
-                results["error"] = vision_results["error"]
-                return results
-            
-            # Start text extraction progress
-            update_progress("text", 0.0)
-                
-            # Extract title from vision results if available
-            if "vision_data" in vision_results:
-                title = vision_results["vision_data"].get("title")
-                if title:
-                    results["extracted_titles"] = vision_results.get("extracted_titles", [title])
-                    
-                    # Update progress before API enrichment
-                    update_progress("text", 0.8)
-                    
-                    # Enrich with metadata based on media type
-                    if media_type == "MOVIE":
-                        update_progress("text", 0.9)
-                        results["movie_data"] = search_movie_details(title)
-                    elif media_type in ["CD", "VINYL", "CASSETTE"]:
-                        update_progress("text", 0.9)
-                        results["audio_data"] = search_audio_details(title, media_type)
-                    
-                    update_progress("text", 1.0)
-            
-            # Save results if successful
-            if results["success"]:
-                results_path = self._save_results(results)
-                results["results_path"] = str(results_path)
-            
-        except (IOError, cv2.error) as e:
-            logger.error(f"Error reading image {image_path}: {str(e)}")
-            results["success"] = False
-            results["error"] = f"Failed to read image: {str(e)}"
         except Exception as e:
-            logger.error(f"Error processing {image_path}: {str(e)}")
-            results["success"] = False
-            results["error"] = f"Processing error: {str(e)}"
-            
-        return results
+            logger.error(f"Processing error: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
         
-    def _save_results(self, results: dict) -> Path:
-        """
-        Save processing results to JSON file.
+    def get_preprocessing_images(self) -> Dict[str, QPixmap]:
+        """Get current preprocessing stage images as Qt pixmaps.
         
-        Args:
-            results: Results dictionary
-            
         Returns:
-            Path to saved results file
+            Dict mapping stage names to QPixmap images
         """
-        # Create results directory
-        results_dir = STORAGE_PATHS["results"]
-        results_dir.mkdir(parents=True, exist_ok=True)
+        pixmaps = {}
+        for stage, image in self.current_preprocessing_images.items():
+            pixmaps[stage] = self._convert_cv_to_qt(image)
+        return pixmaps
         
-        # Generate filename from timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        results_path = results_dir / f"results_{timestamp}.json"
-        
-        # Save to file
-        with open(results_path, "w") as f:
-            # Convert results to serializable format
-            clean_results = results.copy()
-            clean_results["timestamp"] = results["timestamp"]
-            clean_results.pop("debug_image", None)  # Remove debug image
-            
-            json.dump(clean_results, f, indent=2)
-            
-        return results_path
-        
-    def validate_results(self, results: Dict[str, Any]) -> bool:
-        """
-        Validate processing results.
-        
-        Args:
-            results: Results dictionary from process_tape()
-            
-        Returns:
-            True if results are valid, False otherwise
-        """
-        if not isinstance(results, dict):
-            logger.error("Results is not a dictionary")
-            return False
-            
-        required_fields = [
-            "title", "year", "runtime", "studio", 
-            "director", "cast", "rating",
-            "confidence", "source"
-        ]
-        
-        for field in required_fields:
-            if field not in results:
-                logger.error(f"Missing required field: {field}")
-                return False
-                
-        # At least one field should have non-zero confidence
-        confidence = results["confidence"]
-        if not any(conf > 0 for conf in confidence.values()):
-            logger.error("No fields extracted with confidence")
-            return False
-            
-        return True
+    def clear(self):
+        """Clear current state."""
+        self.current_preprocessing_images = {}
+        if hasattr(self.processor, 'preprocessing_images'):
+            self.processor.preprocessing_images.clear()

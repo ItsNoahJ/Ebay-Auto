@@ -1,186 +1,177 @@
 """
-Integration tests for the complete image processing pipeline.
+Integration tests to verify interoperability between components.
 """
-import os
-import time
-from pathlib import Path
-
-import cv2
-import numpy as np
 import pytest
-from PyQt6.QtCore import Qt
+import numpy as np
+from unittest.mock import Mock, patch, PropertyMock, MagicMock
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QImage, QPixmap
 
-from src.gui.main_window import MainWindow
+from src.gui.results_view import ResultsView
 from src.models.coordinator import ProcessingCoordinator
 from src.vision.processor import VisionProcessor
-from src.gui.widgets import ProcessingStatusWidget
-from src.utils import opencv_utils
 
 @pytest.fixture
-def sample_vhs_files(tmp_path):
-    """Create multiple sample VHS cover images for testing."""
-    images = []
-    
-    # Create several test images with varying content
-    for i in range(3):
-        image = np.zeros((300, 200, 3), dtype=np.uint8)
-        
-        # Add different text for each image
-        cv2.rectangle(image, (20, 20), (180, 60), (255, 255, 255), -1)
-        cv2.putText(image, f"TEST TITLE {i+1}", (30, 45),
-                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
-        
-        # Save the image
-        image_path = tmp_path / f"test_vhs_{i+1}.jpg"
-        cv2.imwrite(str(image_path), image)
-        images.append(str(image_path))
-    
-    return images
+def test_vhs_image():
+    """Create a test VHS cover image."""
+    image = np.zeros((300, 200, 3), dtype=np.uint8)
+    # Add some text-like features
+    image[50:70, 30:170] = 255  # Title area
+    image[100:110, 30:100] = 255  # Year area
+    return image
 
-@pytest.mark.integration
-def test_full_pipeline_integration(sample_vhs_files, qtbot, monkeypatch, tmp_path):
-    """Test the complete processing pipeline from GUI to results."""
-    # Set up test environment
-    monkeypatch.setattr(
-        "src.config.settings.STORAGE_PATHS",
-        {"results": tmp_path / "results"}
-    )
-    
-    # Create main window
-    window = MainWindow()
-    qtbot.addWidget(window)
-    window.show()
-    
-    # Get references to key components
-    status_widget = window.findChild(ProcessingStatusWidget)
-    assert status_widget is not None
-    
-    # Process each test image
-    for image_path in sample_vhs_files:
-        # Load image
-        qtbot.mouseClick(window.load_button, Qt.MouseButton.LeftButton)
-        window.image_path = image_path  # Simulate file selection
-        
-        # Start processing
-        qtbot.mouseClick(window.process_button, Qt.MouseButton.LeftButton)
-        
-        # Wait for processing to complete (timeout after 30 seconds)
-        start_time = time.time()
-        while not window.processing_complete and time.time() - start_time < 30:
-            QApplication.processEvents()
-            time.sleep(0.1)
-        
-        assert window.processing_complete
-        
-        # Verify progress tracking
-        for stage_data in status_widget.stage_bars.values():
-            progress_bar = stage_data["progress"]
-            percent_label = stage_data["percent"]
-            assert progress_bar.value() == 100
-            assert percent_label.text() == "100%"
-        
-        # Verify results
-        assert window.results is not None
-        assert window.results["success"]
-        assert len(window.results["extracted_titles"]) > 0
-        
-        # Check that results were saved
-        results_file = Path(window.results["results_path"])
-        assert results_file.exists()
-        
-        # Reset for next image
-        qtbot.mouseClick(window.clear_button, Qt.MouseButton.LeftButton)
-        assert status_widget.time_label.text() == "00:00"
+@pytest.fixture
+def mock_vhs_vision():
+    """Create a mock VHSVision instance."""
+    mock = MagicMock()
+    mock.check_models.return_value = True
+    mock.extract_text.return_value = {
+        'success': True,
+        'vision_data': {
+            'title': "Test Movie",
+            'year': "1995",
+            'runtime': "120 min",
+            'confidence': {
+                'title': 0.95,
+                'year': 0.90,
+                'runtime': 0.85
+            }
+        }
+    }
+    # Mock preprocessing images as a property
+    type(mock).preprocessing_images = PropertyMock(return_value={
+        "Grayscale": np.zeros((100, 100, 3), dtype=np.uint8),
+        "Enhanced": np.zeros((100, 100, 3), dtype=np.uint8)
+    })
+    return mock
 
-@pytest.mark.integration
-def test_pipeline_error_handling(tmp_path, qtbot):
-    """Test error handling throughout the pipeline."""
-    # Create an invalid image file
-    invalid_path = tmp_path / "invalid.jpg"
-    with open(invalid_path, "w") as f:
-        f.write("not an image")
-    
-    # Initialize components
-    coordinator = ProcessingCoordinator()
-    widget = ProcessingStatusWidget()
-    qtbot.addWidget(widget)
-    
-    # Start processing
-    widget.start_processing()
-    results = coordinator.process_tape(
-        str(invalid_path),
-        progress_callback=widget.update_stage
-    )
-    
-    # Verify error handling
-    assert not results["success"]
-    assert "error" in results
-    assert widget.status_label.text() == "Error"
+@pytest.fixture
+def coordinator(mock_vhs_vision):
+    """Create ProcessingCoordinator with mocked vision."""
+    with patch('src.vision.processor.VHSVision', return_value=mock_vhs_vision):
+        coord = ProcessingCoordinator()
+        # Mock the vision property directly
+        coord.processor.vision = mock_vhs_vision
+        return coord
 
-@pytest.mark.integration
-def test_preprocessing_stages(sample_vhs_files, qtbot):
-    """Test each preprocessing stage's impact on image quality."""
-    image_path = sample_vhs_files[0]
-    
-    # Load original image
-    original = cv2.imread(image_path)
-    assert original is not None
-    
-    # Test each preprocessing stage
-    gray = opencv_utils.convert_to_grayscale(original)
-    assert len(gray.shape) == 2
-    
-    resized = opencv_utils.resize_image(gray, target_width=1024)
-    assert resized.shape[1] <= 1024
-    
-    enhanced = opencv_utils.enhance_contrast(resized)
-    assert np.std(enhanced) > np.std(resized)  # Higher contrast
-    
-    denoised = opencv_utils.denoise_image(enhanced)
-    center_roi = lambda img: img[img.shape[0]//4:3*img.shape[0]//4, 
-                                img.shape[1]//4:3*img.shape[1]//4]
-    assert np.std(center_roi(denoised)) < np.std(center_roi(enhanced))
+@pytest.fixture
+def results_view(qapp):
+    """Create ResultsView instance."""
+    widget = ResultsView()
+    widget.setup_ui()
+    return widget
 
-@pytest.mark.integration
-def test_memory_usage_tracking(sample_vhs_files, qtbot):
-    """Test memory usage tracking during processing."""
-    widget = ProcessingStatusWidget()
-    qtbot.addWidget(widget)
+def test_end_to_end_processing(test_vhs_image, coordinator, results_view):
+    """Test complete workflow from image input to GUI display."""
+    # Process image through coordinator
+    result = coordinator.process_tape(test_vhs_image)
     
-    # Record initial memory
-    initial_memory = float(widget.memory_label.text().split()[0])
+    # Verify coordinator results
+    assert isinstance(result, dict)
+    assert result.get("success") is True
+    assert "vision_data" in result
+    vision_data = result["vision_data"]
+    assert vision_data["title"] == "Test Movie"
+    assert vision_data["year"] == "1995"
     
-    # Process large image
-    coordinator = ProcessingCoordinator()
-    widget.start_processing()
-    coordinator.process_tape(
-        sample_vhs_files[0],
-        progress_callback=widget.update_stage
-    )
+    # Verify preprocessing images were generated
+    preprocessing_images = coordinator.get_preprocessing_images()
+    assert len(preprocessing_images) > 0
+    assert "Original" in preprocessing_images
+    assert "Enhanced" in preprocessing_images
     
-    # Verify memory increased
-    final_memory = float(widget.memory_label.text().split()[0])
-    assert final_memory > initial_memory
+    # Update GUI with results
+    results_view.update_results(result)
+    
+    # Verify text display
+    displayed_text = results_view.text_edit.toPlainText()
+    assert "Test Movie" in displayed_text
+    assert "1995" in displayed_text
+    
+    # Update GUI with preprocessing images
+    for stage, pixmap in preprocessing_images.items():
+        results_view.update_preprocessing_image(stage, pixmap)
+        
+    # Verify preprocessing images in GUI
+    for stage in preprocessing_images.keys():
+        assert results_view.get_stage_image(stage) is not None
+        
+    # Verify confidence visualization
+    assert results_view.confidence_bars["title"].value() == 95
 
-@pytest.mark.integration
-def test_concurrent_operations(sample_vhs_files, qtbot):
-    """Test handling of concurrent processing attempts."""
-    window = MainWindow()
-    qtbot.addWidget(window)
-    window.show()
+def test_error_handling_integration(test_vhs_image, coordinator, mock_vhs_vision, results_view):
+    """Test error handling across components."""
+    # Ensure clean state
+    results_view.clear()
     
-    # Start first processing
-    window.image_path = sample_vhs_files[0]
-    qtbot.mouseClick(window.process_button, Qt.MouseButton.LeftButton)
+    # Simulate vision API error
+    mock_vhs_vision.extract_text.return_value = {
+        'success': False,
+        'error': "API Connection Error",
+        'vision_data': {}  # Empty vision data on error
+    }
     
-    # Verify second processing attempt is blocked
-    assert not window.process_button.isEnabled()
+    # Process image
+    result = coordinator.process_tape(test_vhs_image)
     
-    # Wait for completion
-    while not window.processing_complete:
-        QApplication.processEvents()
-        time.sleep(0.1)
+    # Verify error propagation
+    assert isinstance(result, dict)
+    assert result.get("success") is False
+    assert "error" in result
     
-    # Verify processing is re-enabled
-    assert window.process_button.isEnabled()
+    # Update GUI with error result
+    results_view.update_results(result)
+    
+    # Verify error display
+    assert "Error" in results_view.text_edit.toPlainText()
+    assert "API Connection Error" in results_view.text_edit.toPlainText()
+    
+    # Verify confidence bars are reset to zero
+    for bar in results_view.confidence_bars.values():
+        # Get current value before assertion
+        value = bar.value()
+        assert value == 0, f"Expected confidence bar value to be 0, got {value}"
+
+def test_preprocessing_pipeline_integration(test_vhs_image, coordinator):
+    """Test preprocessing pipeline consistency."""
+    # Get preprocessing steps
+    result = coordinator.process_tape(test_vhs_image)
+    images = coordinator.get_preprocessing_images()
+    
+    # Verify image progression
+    assert "Original" in images
+    assert "Grayscale" in images
+    assert "Enhanced" in images
+    assert images["Enhanced"].width() > 0  # Valid image output
+    
+    # Verify image type consistency
+    for stage, image in images.items():
+        assert isinstance(image, QPixmap)
+        assert not image.isNull()
+
+def test_state_cleanup_integration(test_vhs_image, coordinator, results_view):
+    """Test proper cleanup between processing runs."""
+    # First run
+    result1 = coordinator.process_tape(test_vhs_image)
+    results_view.update_results(result1)
+    
+    # Store initial state
+    first_text = results_view.text_edit.toPlainText()
+    first_images = results_view.preprocessing_images.copy()
+    
+    # Clear everything
+    coordinator.clear()
+    results_view.clear()
+    
+    # Verify clean state
+    assert not results_view.text_edit.toPlainText()
+    assert not results_view.preprocessing_images
+    assert not coordinator.get_preprocessing_images()
+    
+    # Second run
+    result2 = coordinator.process_tape(test_vhs_image)
+    results_view.update_results(result2)
+    
+    # Verify fresh state
+    assert results_view.text_edit.toPlainText() == first_text
+    assert len(results_view.preprocessing_images) == len(first_images)

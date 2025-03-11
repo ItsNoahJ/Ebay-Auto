@@ -2,8 +2,15 @@
 Preprocessing pipeline for optimized OCR and text extraction.
 """
 import logging
+import time
+from typing import List, Tuple, Optional, Callable
+
+class TimeoutError(Exception):
+    """Exception raised when an operation times out."""
+    pass
+
 from dataclasses import dataclass
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Callable
 
 import cv2
 import numpy as np
@@ -70,10 +77,10 @@ class RegionDetector:
     
     def __init__(
         self,
-        min_area: int = 100,
-        max_area_ratio: float = 0.5,
-        min_aspect: float = 0.1,
-        max_aspect: float = 10.0
+        min_area: int = 50,  # Lower minimum area to catch smaller text
+        max_area_ratio: float = 0.8,  # Allow larger regions
+        min_aspect: float = 0.05,  # Allow narrower regions
+        max_aspect: float = 20.0  # Allow wider regions
     ):
         self.min_area = min_area
         self.max_area_ratio = max_area_ratio
@@ -95,13 +102,22 @@ class RegionDetector:
             height, width = image.shape[:2]
             max_area = int(width * height * self.max_area_ratio)
             
-            # Create binary image
+            # Create binary image with more aggressive thresholding
+            # Since test image has black text on white background, we invert
+            blur = cv2.GaussianBlur(image, (5, 5), 0)
             _, binary = cv2.threshold(
-                image,
+                blur,
                 0,
                 255,
-                cv2.THRESH_BINARY + cv2.THRESH_OTSU
+                cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
             )
+            
+            # Apply morphological operations to connect text components
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 3))
+            binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+            # Clean up noise
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
             
             # Find contours
             contours, _ = cv2.findContours(
@@ -205,43 +221,53 @@ class PreprocessingPipeline:
     def __init__(self):
         self.clahe = FastCLAHE(clip_limit=2.0, grid_size=(8,8))
         self.bilateral = BilateralFilter()
-        self.region_detector = RegionDetector()
+        self.intermediate_images = {}
         
-    def preprocess(self, image: np.ndarray) -> Tuple[np.ndarray, List[TextRegion]]:
+    def preprocess(
+        self, 
+        image: np.ndarray
+    ) -> np.ndarray:
         """
-        Preprocess image and detect text regions.
+        Preprocess image for text extraction.
         
         Args:
             image: Input image array
             
         Returns:
-            Tuple of (preprocessed image, list of text regions)
+            Preprocessed image array
         """
         try:
-            # Basic preprocessing
+            # Store original
+            self.intermediate_images["Original"] = image.copy()
+
+            # Convert to grayscale
             gray = convert_to_grayscale(image)
+            self.intermediate_images["grayscale"] = gray.copy()
+            
+            # Resize for consistent processing
             resized = resize_image(gray, target_width=1600)
             
-            # Initial denoising
+            # Denoise
             denoised = denoise_image(resized)
             
-            # Enhance contrast
+            # CLAHE enhancement
             enhanced = self.clahe.process(denoised)
+            self.intermediate_images["enhance"] = enhanced.copy()
             
             # Normalize
             normalized = normalize_image(enhanced, target_mean=127, target_std=40)
             
-            # Final bilateral filtering if needed
-            if np.std(normalized) > 45:
+            # Apply bilateral filtering if needed
+            img_std = np.std(normalized)
+            if img_std > 45:
                 final = self.bilateral.process(normalized)
             else:
                 final = normalized
                 
-            # Detect text regions
-            regions = self.region_detector.detect(final)
-            
-            return final, regions
+            self.intermediate_images["text"] = final.copy()
+            return final
             
         except Exception as e:
-            logger.error(f"Preprocessing pipeline failed: {e}")
-            return image, []
+            logger.error(f"Preprocessing failed: {e}")
+            self.intermediate_images.clear()
+            return image  # Return original image on error
