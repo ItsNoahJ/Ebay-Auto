@@ -1,5 +1,7 @@
 # VHS Tape Scanner
 
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/ItsNoahJ/Ebay-Auto?utm_source=oss&utm_medium=github&utm_campaign=ItsNoahJ%2FEbay-Auto&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
+
 An application for scanning and digitizing VHS tape covers using computer vision and OCR.
 
 ## Setup Instructions
@@ -13,6 +15,7 @@ An application for scanning and digitizing VHS tape covers using computer vision
    - Discogs API access from [www.discogs.com/settings/developers](https://www.discogs.com/settings/developers)
 
 ### Installation
+
 
 1. Clone this repository:
 ```bash
