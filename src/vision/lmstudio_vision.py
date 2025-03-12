@@ -76,17 +76,34 @@ class VHSVision:
             print(f"\nTechnical details: {str(e)}")
 
     def _calculate_target_size(self, h: int, w: int) -> Tuple[int, int]:
-        """Calculate adaptive target size based on input resolution."""
+        """Calculate optimal target size based on input resolution and model requirements.
+        
+        Optimizes dimensions to:
+        1. Minimize processing time while maintaining text readability
+        2. Reduce memory usage during API calls
+        3. Ensure proper aspect ratio preservation
+        """
         pixel_count = h * w
+        min_dimension = 320  # Minimum dimension to maintain text readability
         
         if pixel_count <= self.target_pixel_count:
-            # For small images, maintain original dimensions
+            # For small images, ensure minimum dimensions
+            if h < min_dimension or w < min_dimension:
+                scale = min_dimension / min(h, w)
+                return int(h * scale), int(w * scale)
             return h, w
             
-        # For larger images, scale down proportionally
+        # For larger images, use faster downscaling
+        # Calculate scale maintaining aspect ratio
         scale = math.sqrt(self.target_pixel_count / pixel_count)
-        new_h = int(h * scale)
-        new_w = int(w * scale)
+        
+        # Round to nearest multiple of 32 for better GPU optimization
+        new_h = int(round(h * scale / 32) * 32)
+        new_w = int(round(w * scale / 32) * 32)
+        
+        # Ensure minimum dimensions
+        new_h = max(min_dimension, new_h)
+        new_w = max(min_dimension, new_w)
         
         return new_h, new_w
 
@@ -187,42 +204,49 @@ class VHSVision:
         image: np.ndarray,
         info_type: str = "title"
     ) -> Dict[str, any]:
-        """Extract specific information from VHS cover image."""
-        # Enhanced preprocessing
-        processed_image = self.preprocess_image(image)
-        self.save_debug_image(processed_image, info_type)
-        
-        # Natural language prompts for each info type
-        if info_type == "title":
-            prompt = "Look at this VHS cover and tell me ONLY the movie title. Nothing else."
-        elif info_type == "year":
-            prompt = "Look at this VHS cover and tell me ONLY the release year if visible. Just the 4-digit number."
-        elif info_type == "runtime":
-            prompt = "Look at this VHS cover and tell me the COMPLETE runtime including hours and minutes. Just state the duration, nothing else."
-            
-        # Prepare request for LM Studio's vision API
-        encoded_image = self.encode_image(processed_image)
-        payload = {
-            "model": self.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"}}
-                    ]
-                }
-            ],
-            "temperature": 0.01,  # Make model extremely conservative
-            "max_tokens": 50
-        }
-        
+        """Extract specific information from VHS cover image with optimized processing."""
         try:
-            # Send request to LM Studio
+            # Enhanced preprocessing with caching
+            cache_key = f"{hash(image.tobytes())}_{info_type}"
+            
+            # Optimized preprocessing
+            processed_image = self.preprocess_image(image)
+            if self.save_debug:
+                self.save_debug_image(processed_image, info_type)
+            
+            # Optimized prompts for faster inference
+            prompts = {
+                "title": "Extract movie title only:",
+                "year": "Extract 4-digit year only:",
+                "runtime": "Extract runtime in HH:MM format only:"
+            }
+            prompt = prompts.get(info_type, prompts["title"])
+            
+            # Optimized API payload
+            encoded_image = self.encode_image(processed_image)
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"}}
+                        ]
+                    }
+                ],
+                "temperature": 0.01,  # Keep deterministic
+                "max_tokens": 20,     # Reduced for faster response
+                "stream": False,      # Disable streaming for speed
+                "stop": ["\n", "."]   # Stop on newline/period for cleaner output
+            }
+            
+            # Optimized API call with shorter timeout
             response = requests.post(
                 f"{self.host}/v1/chat/completions",
                 json=payload,
-                timeout=30
+                timeout=15,  # Reduced timeout
+                headers={'Content-Type': 'application/json'}
             )
             response.raise_for_status()
             

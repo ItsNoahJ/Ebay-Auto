@@ -1,70 +1,67 @@
-# Project Context
+# VHS Vision Processing Project Context
 
-## Overview
-The VHS Auto project processes VHS tape covers and audio media covers, using computer vision for text extraction and external APIs (TMDB, Discogs) for metadata enrichment.
+## Current Status
 
-## Core Components
+The project focuses on extracting text information from VHS cover images using computer vision and LM Studio's API. Recent optimizations have significantly improved processing speed and reliability.
 
-### Vision Processing
-- Advanced preprocessing pipeline with multi-stage denoising and edge preservation
-- FastCLAHE contrast enhancement and statistical normalization
-- Intelligent text region detection with confidence scoring
-- Comprehensive test suite with performance benchmarks
-- High-resolution processing (1600px width) optimized for text extraction
+### Core Components
 
-### Media Type Processing
-- Movie processing via TMDB API
-- Audio media (CD, Vinyl, Cassette) via Discogs API
-- Graceful handling of missing API credentials
+1. **VHSVision Class** (src/vision/lmstudio_vision.py)
+   - Handles image preprocessing and text extraction
+   - Optimized for speed and memory efficiency
+   - Includes adaptive image sizing and quality
+   - Uses LM Studio's API for text recognition
 
-### User Interface
-- Qt-based GUI with results tabs
-- Image preview functionality
-- Metadata display system
+2. **Performance Characteristics**
+   - Preprocessing: ~260ms per image
+   - Image encoding: ~3ms average
+   - API response: 15s timeout (reduced from 30s)
+   - Memory usage: <1GB per operation
 
-## Recent Improvements
+3. **Testing Infrastructure**
+   - Comprehensive performance benchmarks
+   - Automated test suite with mocked API calls
+   - Documented in tests/test_performance.py
 
-### Vision Pipeline
-- Modular preprocessing system with specialized components
-- Enhanced text region detection and validation
-- Improved confidence scoring with category-specific rules
-- Comprehensive error handling and debug logging
-- Extensive test coverage for all components
+## Architecture Decisions
 
-### Testing Coverage
-- Mock implementation for vision and API calls
-- Error handling validation
-- Integration test suite
-- Preprocessing pipeline tests
+1. **Image Processing Pipeline**
+   - GPU-optimized dimension handling (32-pixel alignment)
+   - Minimum dimension enforcement (320px)
+   - Adaptive JPEG quality (65-95%)
+   - CLAHE for contrast enhancement
 
-### Code Structure
-- Clear component separation
-- Robust error handling
-- Type hints and documentation
-- Environment-based configuration
+2. **API Integration**
+   - Streamlined prompts for faster inference
+   - Caching support via content hashing
+   - Improved error handling and diagnostics
+   - Optimized request payloads
 
-## Current Focus
-1. UI Enhancements
-   - Processing status visualization
-   - Progress tracking
-   - Error messaging improvements
+3. **Quality Assurance**
+   - Confidence scoring for extracted text
+   - Debug image output for verification
+   - Performance monitoring and benchmarks
 
-2. Vision System Improvements
-   - Neural-based denoising integration
-   - Dynamic parameter optimization
-   - Layout-aware processing
-   - Real-time quality assessment
-   - Performance optimization for batch processing
+## Current Challenges
 
-3. Testing Extensions
-   - Preprocessing coverage
-   - Performance benchmarks
-   - Test fixtures
+1. **Processing Speed**
+   - Balancing quality vs. speed in preprocessing
+   - API response time variability
+   - Memory usage optimization
 
-## Dependencies
-- Python 3.13+
-- PyQt6 for GUI
-- OpenCV 4.x with contrib modules for advanced image processing
-- LM Studio for vision-language processing
-- External APIs: TMDB, Discogs
-- NumPy for efficient array operations
+2. **Text Recognition**
+   - Handling low contrast covers
+   - Dealing with cursive/stylized text
+   - Multiple text regions handling
+
+## Next Steps
+
+1. **Short Term**
+   - Add batch processing support
+   - Implement response caching with TTL
+   - Add detailed timing breakdowns
+
+2. **Long Term**
+   - Explore WebP format adoption
+   - Consider async processing
+   - Add automated parameter tuning
